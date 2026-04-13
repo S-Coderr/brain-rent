@@ -36,6 +36,7 @@ if (!defined('APP_URL')) {
 
     define('APP_URL', $appUrl);
 }
+
 define('APP_NAME', 'BrainRent');
 
 // Razorpay Keys

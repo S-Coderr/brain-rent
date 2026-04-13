@@ -12,26 +12,26 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $bookTitle = trim($_POST['title'] ?? '');
-  $author = trim($_POST['author'] ?? '');
-  $category = trim($_POST['category'] ?? '');
-  $description = trim($_POST['description'] ?? '');
-
-  if (empty($bookTitle)) {
-    $error = 'Book title is required';
-  } elseif (!isset($_FILES['ebook']) || $_FILES['ebook']['error'] !== UPLOAD_ERR_OK) {
-    $error = 'Please upload an e-book file';
+  $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+  if (empty($_POST) && empty($_FILES) && $contentLength > 0) {
+    $error = 'Upload failed. The request is too large for the server. Increase post_max_size and upload_max_filesize in php.ini.';
   } else {
+<<<<<<< Updated upstream
     $file = $_FILES['ebook'];
     $allowedExts = ['pdf', 'epub', 'mobi'];
+=======
+    $bookTitle = trim($_POST['title'] ?? '');
+    $author = trim($_POST['author'] ?? '');
+    $category = trim($_POST['category'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+>>>>>>> Stashed changes
 
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-    if (!in_array($ext, $allowedExts)) {
-      $error = 'Invalid file type. Only PDF, EPUB, and MOBI are allowed.';
-    } elseif ($file['size'] > 50 * 1024 * 1024) { // 50MB limit
-      $error = 'File too large. Maximum size is 50MB.';
+    if (empty($bookTitle)) {
+      $error = 'Book title is required';
+    } elseif (!isset($_FILES['ebook'])) {
+      $error = 'Please upload an e-book file';
     } else {
+<<<<<<< Updated upstream
       $uploadRoot = __DIR__ . '/../uploads';
       $ebooksDir = $uploadRoot . '/ebooks';
       $thumbDir = $uploadRoot . '/thumbnails';
@@ -60,8 +60,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $coverPath = $thumbDir . '/' . $coverFilename;
               if (move_uploaded_file($coverFile['tmp_name'], $coverPath)) {
                 $coverImage = APP_URL . '/uploads/thumbnails/' . $coverFilename;
+=======
+      $file = $_FILES['ebook'];
+      $allowedTypes = ['application/pdf', 'application/epub+zip', 'application/x-mobipocket-ebook'];
+      $allowedExts = ['pdf', 'epub', 'mobi'];
+
+      if ($file['error'] !== UPLOAD_ERR_OK) {
+        switch ($file['error']) {
+          case UPLOAD_ERR_INI_SIZE:
+          case UPLOAD_ERR_FORM_SIZE:
+            $error = 'File too large. Maximum size is 50MB.';
+            break;
+          case UPLOAD_ERR_NO_FILE:
+            $error = 'Please upload an e-book file';
+            break;
+          default:
+            $error = 'Failed to upload file. Please try again.';
+            break;
+        }
+      } else {
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        if (!in_array($ext, $allowedExts)) {
+          $error = 'Invalid file type. Only PDF, EPUB, and MOBI are allowed.';
+        } elseif ($file['size'] > 50 * 1024 * 1024) { // 50MB limit
+          $error = 'File too large. Maximum size is 50MB.';
+        } else {
+          // Create unique filename
+          $filename = uniqid() . '_' . time() . '.' . $ext;
+          $uploadPath = __DIR__ . '/../uploads/ebooks/' . $filename;
+
+          if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
+            // Handle cover image if uploaded
+            $coverImage = null;
+            if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
+              $coverFile = $_FILES['cover'];
+              $coverExt = strtolower(pathinfo($coverFile['name'], PATHINFO_EXTENSION));
+              if (in_array($coverExt, ['jpg', 'jpeg', 'png', 'webp'])) {
+                $coverFilename = uniqid() . '_cover.' . $coverExt;
+                $coverPath = __DIR__ . '/../uploads/thumbnails/' . $coverFilename;
+                if (move_uploaded_file($coverFile['tmp_name'], $coverPath)) {
+                  $coverImage = APP_URL . '/uploads/thumbnails/' . $coverFilename;
+                }
+>>>>>>> Stashed changes
               }
             }
+
+            $filePath = APP_URL . '/uploads/ebooks/' . $filename;
+            $fileSize = $file['size'];
+
+            $db->execute(
+              "INSERT INTO libraries (title, author, category, description, file_path, file_size, file_type, cover_image, uploaded_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [$bookTitle, $author, $category, $description, $filePath, $fileSize, $ext, $coverImage, $user['id']]
+            );
+
+            $success = 'E-book uploaded successfully!';
+            header('Location: ' . APP_URL . '/pages/libraries.php');
+            exit;
+          } else {
+            $error = 'Failed to upload file. Please try again.';
           }
 
           $filePath = APP_URL . '/uploads/ebooks/' . $filename;

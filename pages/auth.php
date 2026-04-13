@@ -175,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <p class="text-muted">Login or create your account</p>
                     </div>
 
-                    <div class="br-card p-4">
+                    <div class="br-card p-4 br-auth-card">
                         <div class="d-flex flex-wrap gap-2 mb-4">
                             <button type="button" class="btn <?= $activeTab === 'login' ? 'br-btn-gold' : 'br-btn-ghost' ?> btn-sm" data-auth-tab="login">Log In</button>
                             <button type="button" class="btn <?= $activeTab === 'signup' ? 'br-btn-gold' : 'br-btn-ghost' ?> btn-sm" data-auth-tab="signup">Create Account</button>
@@ -185,24 +185,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php if ($loginError): ?>
                                 <div class="alert alert-danger"><?= htmlspecialchars($loginError) ?></div>
                             <?php endif; ?>
+
+
+
+
                             <form method="post">
                                 <input type="hidden" name="form_type" value="login">
-                                <div class="mb-3">
+
+                                <div class="mb-4">
                                     <label class="br-form-label">Email Address</label>
                                     <input type="text" name="email" class="br-form-control" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                                 </div>
+
                                 <div class="mb-4">
                                     <label class="br-form-label">Password</label>
-                                    <input type="password" name="password" class="br-form-control" required>
+                                    <input type="password" name="password" class="br-form-control mx-4" required>
                                 </div>
+
                                 <button type="submit" class="btn br-btn-gold w-100 mb-3">
                                     Log In
                                 </button>
+
                                 <div class="text-center">
                                     <span class="text-muted">No account yet?</span>
                                     <button type="button" class="btn btn-link text-warning p-0" data-auth-tab="signup">Create one</button>
                                 </div>
                             </form>
+
+
+
+
+
                         </div>
 
                         <div id="auth-signup" data-auth-panel="signup" style="display:<?= $activeTab === 'signup' ? 'block' : 'none' ?>;">
