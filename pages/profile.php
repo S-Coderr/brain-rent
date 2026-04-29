@@ -12,6 +12,8 @@ $error = '';
 $success = '';
 $pwdError = '';
 $pwdSuccess = '';
+$deleteError = '';
+$deleteSuccess = '';
 
 if (!empty($_GET['pwd_status'])) {
   $pwdMessage = trim((string) ($_GET['pwd_message'] ?? ''));
@@ -19,6 +21,15 @@ if (!empty($_GET['pwd_status'])) {
     $pwdSuccess = $pwdMessage !== '' ? $pwdMessage : 'Password updated successfully.';
   } elseif ($_GET['pwd_status'] === 'error') {
     $pwdError = $pwdMessage !== '' ? $pwdMessage : 'Could not update password.';
+  }
+}
+
+if (!empty($_GET['del_status'])) {
+  $delMessage = trim((string) ($_GET['del_message'] ?? ''));
+  if ($_GET['del_status'] === 'success') {
+    $deleteSuccess = $delMessage !== '' ? $delMessage : 'Account deleted.';
+  } elseif ($_GET['del_status'] === 'error') {
+    $deleteError = $delMessage !== '' ? $delMessage : 'Could not delete account.';
   }
 }
 
@@ -98,6 +109,12 @@ $videoCount = (int) (($db->fetchOne("SELECT COUNT(*) AS total FROM problem_solvi
     <?php if ($pwdSuccess): ?>
       <div class="alert alert-success"><?= htmlspecialchars($pwdSuccess) ?></div>
     <?php endif; ?>
+    <?php if ($deleteError): ?>
+      <div class="alert alert-danger"><?= htmlspecialchars($deleteError) ?></div>
+    <?php endif; ?>
+    <?php if ($deleteSuccess): ?>
+      <div class="alert alert-success"><?= htmlspecialchars($deleteSuccess) ?></div>
+    <?php endif; ?>
 
     <div class="br-card p-4 mb-4">
       <form method="post">
@@ -173,6 +190,21 @@ $videoCount = (int) (($db->fetchOne("SELECT COUNT(*) AS total FROM problem_solvi
         </div>
         <button type="submit" class="btn br-btn-ghost">
           <i class="bi bi-key me-2"></i>Update Password
+        </button>
+      </form>
+    </div>
+
+    <!-- Delete Account Section -->
+    <div class="br-card p-4 mt-4">
+      <h5 class="fw-semibold mb-2 text-danger">Delete My Account</h5>
+      <p class="text-muted small mb-3">
+        This will disable your account and remove your profile details. Your uploads and provided solutions will remain visible
+        with the name "Deleted Account".
+      </p>
+      <form method="post" action="<?= APP_URL ?>/api/delete-account.php" onsubmit="return confirm('Are you sure you want to delete your account? This action cannot be undone.');">
+        <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
+        <button type="submit" class="btn btn-danger">
+          <i class="bi bi-trash me-2"></i>Delete My Account
         </button>
       </form>
     </div>

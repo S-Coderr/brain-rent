@@ -1,6 +1,7 @@
 <?php
 // api/view-ebook.php — View E-Book File
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../includes/media_blob_helpers.php';
 
 $bookId = (int)($_GET['id'] ?? 0);
 
@@ -18,6 +19,23 @@ if (!$book) {
 // Increment view count
 $db->execute("UPDATE libraries SET views = views + 1 WHERE id = ?", [$bookId]);
 
+$blobMeta = brGetEntityFileBlobMeta($db, 'libraries', $bookId);
+if ($blobMeta) {
+    $ext = strtolower((string) ($blobMeta['file_extension'] ?: ($book['file_type'] ?? '')));
+    $filename = brBuildSafeDownloadName((string) ($book['title'] ?? ''), $ext, 'ebook');
+    $contentType = $blobMeta['mime_type'] ?: brDetectMimeTypeFromExtension($ext);
+
+    header('Content-Type: ' . $contentType);
+    header('Content-Disposition: inline; filename="' . $filename . '"');
+    header('Content-Length: ' . (int) ($blobMeta['file_size'] ?? 0));
+
+    if (!brStreamEntityFileBlobByUploadId($db, (int) $blobMeta['id'])) {
+        http_response_code(500);
+        die('Failed to stream file from database');
+    }
+    exit;
+}
+
 // Get file path
 $filePath = resolveUploadedFilePath($book['file_path']);
 
@@ -33,13 +51,7 @@ $contentTypes = [
 
 $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 $contentType = $contentTypes[$ext] ?? 'application/octet-stream';
-
-$base = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $book['title'] ?: 'ebook');
-$base = trim($base, '_');
-$filename = $base ?: 'ebook';
-if ($ext) {
-    $filename .= '.' . $ext;
-}
+$filename = brBuildSafeDownloadName((string) ($book['title'] ?? ''), $ext, 'ebook');
 
 header('Content-Type: ' . $contentType);
 header('Content-Disposition: inline; filename="' . $filename . '"');

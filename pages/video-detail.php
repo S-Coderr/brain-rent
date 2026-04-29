@@ -55,7 +55,7 @@ $comments = $db->fetchAll(
         <!-- Video Player -->
         <div class="br-card p-0 mb-4">
           <video controls style="width: 100%; border-radius: 16px; background: #000;">
-            <source src="<?= htmlspecialchars($video['video_path']) ?>" type="video/mp4">
+            <source src="<?= APP_URL ?>/api/view-video.php?id=<?= (int) $video['id'] ?>" type="video/mp4">
             Your browser does not support the video tag.
           </video>
         </div>

@@ -299,6 +299,7 @@ try {
 
     $featureFiles = [
         __DIR__ . '/add_new_features.sql',
+        __DIR__ . '/add_upload_blob_storage.sql',
         __DIR__ . '/add_admin_features.sql',
         __DIR__ . '/add_pending_expert_features.sql',
         __DIR__ . '/add_temp_payment_features.sql',

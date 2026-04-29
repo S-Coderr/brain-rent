@@ -211,20 +211,44 @@ const BrainRent = {
       }
 
       if (!notifications.length) {
-        listEl.innerHTML =
-          '<div class="text-center text-muted py-4 small">No notifications yet</div>';
+        listEl.innerHTML = '';
         return;
       }
 
       listEl.innerHTML = notifications
-        .map(
-          (n) => `
-        <div class="br-notif-item ${n.is_read == 0 ? "unread" : ""}">
-          <div class="fw-medium" style="font-size:.85rem">${escHtml(n.title)}</div>
-          <div class="text-muted" style="font-size:.78rem">${escHtml(n.message)}</div>
-          <div class="text-subtle" style="font-size:.72rem;margin-top:3px">${timeAgo(n.created_at)}</div>
-        </div>`,
-        )
+        .map((n) => {
+          const hasLink = !!n.link;
+          const tag = hasLink ? "a" : "div";
+          let href = hasLink ? `href="${encodeURI(n.link)}"` : "";
+          
+          if (typeof openNotifModal === 'function') {
+              href = `href="javascript:void(0)" onclick="openNotifModal('${escHtml(n.title).replace(/'/g, "\\'")}', '${escHtml(n.message).replace(/'/g, "\\'")}', '${n.link}', '${n.type}')"`;
+          }
+
+          const isUnread = n.is_read == 0;
+          const cls = `br-notif-item d-flex align-items-start gap-3 p-3 text-decoration-none ${isUnread ? "unread" : ""}`;
+          const iconBg = isUnread ? "background: linear-gradient(135deg, var(--br-gold), #f1a95a); color: white;" : "background: var(--br-dark3); color: var(--br-text2);";
+          
+          let iconHTML = `<i class="bi bi-bell"></i>`;
+          if (n.type === 'new_message') iconHTML = `<i class="bi bi-chat-dots"></i>`;
+          else if (n.title.toLowerCase().includes('accepted')) iconHTML = `<i class="bi bi-check-circle"></i>`;
+          else if (n.title.toLowerCase().includes('declined')) iconHTML = `<i class="bi bi-x-circle"></i>`;
+          else if (n.title.toLowerCase().includes('completed')) iconHTML = `<i class="bi bi-star"></i>`;
+          
+          return `
+        <${tag} class="${cls}" ${href} style="border-bottom: 1px solid var(--br-border); transition: all 0.2s;">
+          <div class="d-flex align-items-center justify-content-center flex-shrink-0 rounded-circle shadow-sm" style="width: 36px; height: 36px; font-size: 1.1rem; ${iconBg}">
+            ${iconHTML}
+          </div>
+          <div class="flex-grow-1 overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="fw-bold text-truncate" style="font-size: 0.9rem; color: var(--br-text);">${escHtml(n.title)}</span>
+              <span class="text-subtle flex-shrink-0 ms-2" style="font-size: 0.7rem;">${timeAgo(n.created_at)}</span>
+            </div>
+            <div class="text-muted" style="font-size: 0.8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;">${escHtml(n.message)}</div>
+          </div>
+        </${tag}>`;
+        })
         .join("");
     } catch (_) {
       /* silent */
@@ -336,6 +360,45 @@ function initSubmitWizard() {
       () => (cnt.textContent = `${txt.value.length} / 3000 characters`),
     );
 
+  const baseRateInput = document.getElementById("base-rate");
+  const offerRateInput = document.getElementById("offer-rate");
+  const offerRateDisplay = document.getElementById("offer-rate-display");
+  let currentUrgency = 0;
+
+  const readBaseRate = () => {
+    if (offerRateInput) {
+      const val = parseFloat(offerRateInput.value || "0");
+      return Number.isFinite(val) ? val : 0;
+    }
+    const val = parseFloat(baseRateInput?.value || "0");
+    return Number.isFinite(val) ? val : 0;
+  };
+
+  const updateTotals = () => {
+    const base = readBaseRate();
+    const fee = Math.round((base + currentUrgency) * 0.15 * 100) / 100;
+    const total = Math.round((base + currentUrgency + fee) * 100) / 100;
+    document
+      .querySelectorAll(".sidebar-base")
+      .forEach((el) => (el.textContent = "$" + base.toFixed(2)));
+    document
+      .querySelectorAll(".sidebar-urgency")
+      .forEach((el) => (el.textContent = "$" + currentUrgency.toFixed(2)));
+    document
+      .querySelectorAll(".sidebar-total")
+      .forEach((el) => (el.textContent = "$" + total.toFixed(2)));
+    if (offerRateDisplay) {
+      offerRateDisplay.textContent = "$" + base.toFixed(0);
+    }
+  };
+
+  if (offerRateInput) {
+    offerRateInput.addEventListener("input", () => {
+      if (baseRateInput) baseRateInput.value = offerRateInput.value;
+      updateTotals();
+    });
+  }
+
   // Next button
   document.getElementById("btn-next")?.addEventListener("click", () => {
     const title = document.getElementById("problem-title")?.value.trim();
@@ -367,19 +430,14 @@ function initSubmitWizard() {
         .querySelectorAll(".br-urgency-opt")
         .forEach((o) => o.classList.remove("selected"));
       opt.classList.add("selected");
-      const price = parseInt(opt.dataset.price || 0);
-      const base = parseInt(document.getElementById("base-rate")?.value || 0);
-      const fee = Math.round((base + price) * 0.15);
-      const total = base + price + fee;
-      document
-        .querySelectorAll(".sidebar-urgency")
-        .forEach((el) => (el.textContent = "$" + price));
-      document
-        .querySelectorAll(".sidebar-total")
-        .forEach((el) => (el.textContent = "$" + total));
+      const price = parseFloat(opt.dataset.price || "0");
+      currentUrgency = Number.isFinite(price) ? price : 0;
+      updateTotals();
       document.getElementById("urgency-input").value = opt.dataset.urgency;
     });
   });
+
+  updateTotals();
 
   // File uploads
   const fileInput = document.getElementById("file-input");
@@ -397,11 +455,27 @@ function initSubmitWizard() {
   // Pay & Submit
   document.getElementById("btn-pay")?.addEventListener("click", async () => {
     const btn = document.getElementById("btn-pay");
+
+    // Clear any previous error banner
+    document.getElementById("submit-error-banner")?.remove();
+
     btn.disabled = true;
-    btn.textContent = "Completing payment…";
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting…';
 
     const formData = new FormData(document.getElementById("submit-form"));
-    window._recorder?.appendTo(formData);
+    window._recorder?.appendTo(formData, "voice_recording");
+
+    const showError = (msg) => {
+      const banner = document.createElement("div");
+      banner.id = "submit-error-banner";
+      banner.className = "alert alert-danger d-flex align-items-center gap-2 mb-3";
+      banner.style.cssText = "border-radius:10px;background:#7f1d1d;border-color:#ef4444;color:#fca5a5";
+      banner.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i><span>${msg}</span>`;
+      btn.parentElement.insertBefore(banner, btn);
+      BrainRent.toast(msg, "error");
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-lock-fill me-2"></i>Payment Done & Submit';
+    };
 
     try {
       const res = await fetch(apiUrl("/api/submit_request.php"), {
@@ -410,9 +484,7 @@ function initSubmitWizard() {
       });
       const data = await res.json();
       if (!data.success) {
-        BrainRent.toast(data.error || "Submission failed", "error");
-        btn.disabled = false;
-        btn.textContent = "Payment Done & Submit";
+        showError(data.error || "Submission failed. Please check the form and try again.");
         return;
       }
 
@@ -438,9 +510,7 @@ function initSubmitWizard() {
         window.location.href = nextUrl;
       }, 1400);
     } catch (e) {
-      BrainRent.toast("Network error. Please try again.", "error");
-      btn.disabled = false;
-      btn.textContent = "Payment Done & Submit";
+      showError("Network error. Please check your connection and try again.");
     }
   });
 }
@@ -480,26 +550,5 @@ document.addEventListener("DOMContentLoaded", () => {
       BrainRent.loadNotifications();
     });
 
-  // Accept / Decline request buttons (expert dashboard)
-  document.querySelectorAll("[data-action]").forEach((btn) => {
-    btn.addEventListener("click", async function (e) {
-      e.stopPropagation();
-      const action = this.dataset.action;
-      const reqId = this.dataset.requestId;
-      if (!reqId) return;
 
-      const fd = new URLSearchParams({ action, request_id: reqId });
-      const res = await fetch(apiUrl("/api/manage_request.php"), {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-
-      BrainRent.toast(
-        data.success ? data.message : data.error || "Error",
-        data.success ? "success" : "error",
-      );
-      if (data.success) setTimeout(() => location.reload(), 1200);
-    });
-  });
 });

@@ -5,28 +5,28 @@ require_once __DIR__ . '/../config/auth.php';
 requireLogin();
 
 $expertUserId = (int) ($_GET['expert_id'] ?? 0);
-if (!$expertUserId) {
-  header('Location: ' . APP_URL . '/pages/browse.php');
-  exit;
-}
+$isGlobal = $expertUserId <= 0;
 
 $db = Database::getInstance();
-$expert = $db->fetchOne(
-  "SELECT ep.*, u.full_name, u.profile_photo
-     FROM expert_profiles ep INNER JOIN users u ON ep.user_id = u.id
-     WHERE ep.user_id = ? AND ep.is_available = 1 AND u.is_active = 1",
-  [$expertUserId]
-);
-if (!$expert) {
-  header('Location: ' . APP_URL . '/pages/browse.php');
-  exit;
+$expert = null;
+if (!$isGlobal) {
+  $expert = $db->fetchOne(
+    "SELECT ep.*, u.full_name, u.profile_photo
+       FROM expert_profiles ep INNER JOIN users u ON ep.user_id = u.id
+       WHERE ep.user_id = ? AND ep.is_available = 1 AND u.is_active = 1",
+    [$expertUserId]
+  );
+  if (!$expert) {
+    header('Location: ' . APP_URL . '/pages/browse.php');
+    exit;
+  }
 }
 
 $categories = $db->fetchAll("SELECT id, name FROM expertise_categories WHERE is_active = 1 ORDER BY name");
 $title = 'Submit Problem';
 require_once __DIR__ . '/../includes/header.php';
 
-$baseFee = $expert['rate_per_session'];
+$baseFee = $isGlobal ? 0 : $expert['rate_per_session'];
 $platformFee = round($baseFee * 0.15, 2);
 $total = $baseFee + $platformFee;
 $avColors = ['av-1', 'av-2', 'av-3', 'av-4', 'av-5', 'av-6'];
@@ -42,10 +42,14 @@ $avColor = $avColors[$expertUserId % count($avColors)];
     </div>
     <div class="mb-4">
       <h1 class="br-section-title fs-3 mb-1">Submit Your Problem</h1>
-      <p class="text-muted small">Submitting to <strong
-          class="text-warning"><?= htmlspecialchars($expert['full_name']) ?></strong> ·
-        <?= htmlspecialchars($expert['headline'] ?? '') ?>
-      </p>
+      <?php if ($isGlobal): ?>
+        <p class="text-muted small">Posting globally to domain-matched experts.</p>
+      <?php else: ?>
+        <p class="text-muted small">Submitting to <strong
+            class="text-warning"><?= htmlspecialchars($expert['full_name']) ?></strong> ·
+          <?= htmlspecialchars($expert['headline'] ?? '') ?>
+        </p>
+      <?php endif; ?>
     </div>
 
     <!-- Step Indicator -->
@@ -61,7 +65,8 @@ $avColor = $avColors[$expertUserId % count($avColors)];
     </div>
 
     <form id="submit-form" enctype="multipart/form-data">
-      <input type="hidden" name="expert_id" value="<?= $expertUserId ?>">
+      <input type="hidden" name="request_scope" value="<?= $isGlobal ? 'global' : 'direct' ?>">
+      <input type="hidden" name="expert_id" value="<?= $isGlobal ? '' : $expertUserId ?>">
       <input type="hidden" id="base-rate" value="<?= (int) $baseFee ?>">
       <input type="hidden" name="urgency" id="urgency-input" value="normal">
       <input type="hidden" name="payment_gateway" id="payment-gateway-input" value="razorpay">
@@ -84,13 +89,22 @@ $avColor = $avColors[$expertUserId % count($avColors)];
 
               <div class="mb-3">
                 <label class="br-form-label">Category</label>
-                <select name="category_id" class="br-form-control form-control form-select">
+                <select name="category_id" class="br-form-control form-control form-select" <?= $isGlobal ? 'required' : '' ?>>
                   <option value="">— Select a category —</option>
                   <?php foreach ($categories as $cat): ?>
                     <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
                   <?php endforeach; ?>
                 </select>
               </div>
+
+              <?php if ($isGlobal): ?>
+                <div class="mb-3">
+                  <label class="br-form-label">Offer Rate (per session) *</label>
+                  <input type="number" name="offer_rate" id="offer-rate" class="br-form-control form-control"
+                    min="1" step="0.01" placeholder="e.g. 120" required>
+                  <div class="text-subtle" style="font-size:.72rem;margin-top:4px">Rate experts will see when deciding to take your problem.</div>
+                </div>
+              <?php endif; ?>
 
               <div class="mb-3">
                 <label class="br-form-label">Describe Your Problem *</label>
@@ -167,24 +181,38 @@ $avColor = $avColors[$expertUserId % count($avColors)];
               </div>
 
               <!-- Expert Summary -->
-              <div class="d-flex align-items-center gap-3 p-3 mb-3"
-                style="background:var(--br-dark3);border-radius:10px">
-                <div class="br-expert-avatar <?= $avColor ?>"
-                  style="width:52px;height:52px;font-size:18px;border-radius:12px">
-                  <?= strtoupper(substr($expert['full_name'], 0, 2)) ?>
+              <?php if ($isGlobal): ?>
+                <div class="d-flex align-items-center gap-3 p-3 mb-3"
+                  style="background:var(--br-dark3);border-radius:10px">
+                  <div class="br-expert-avatar" style="width:52px;height:52px;font-size:18px;border-radius:12px">
+                    AE
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-medium">Any Verified Expert</div>
+                    <div class="text-muted small">Matched by domain · Response within 48h</div>
+                  </div>
+                  <div class="mono text-gold fs-5" id="offer-rate-display">$0</div>
                 </div>
-                <div class="flex-grow-1">
-                  <div class="fw-medium"><?= htmlspecialchars($expert['full_name']) ?></div>
-                  <div class="text-muted small">⭐ <?= number_format($expert['average_rating'], 1) ?> · Responds in
-                    ~<?= $expert['max_response_hours'] ?>h</div>
+              <?php else: ?>
+                <div class="d-flex align-items-center gap-3 p-3 mb-3"
+                  style="background:var(--br-dark3);border-radius:10px">
+                  <div class="br-expert-avatar <?= $avColor ?>"
+                    style="width:52px;height:52px;font-size:18px;border-radius:12px">
+                    <?= strtoupper(substr($expert['full_name'], 0, 2)) ?>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-medium"><?= htmlspecialchars($expert['full_name']) ?></div>
+                    <div class="text-muted small">⭐ <?= number_format($expert['average_rating'], 1) ?> · Responds in
+                      ~<?= $expert['max_response_hours'] ?>h</div>
+                  </div>
+                  <div class="mono text-gold fs-5">$<?= number_format($baseFee, 0) ?></div>
                 </div>
-                <div class="mono text-gold fs-5">$<?= number_format($baseFee, 0) ?></div>
-              </div>
+              <?php endif; ?>
 
               <!-- Price Breakdown -->
               <div class="p-3 mb-4" style="background:var(--br-dark3);border-radius:10px">
                 <div class="d-flex justify-content-between small text-muted mb-2"><span>Session fee</span><span
-                    class="mono">$<?= number_format($baseFee, 2) ?></span></div>
+                    class="mono sidebar-base">$<?= number_format($baseFee, 2) ?></span></div>
                 <div class="d-flex justify-content-between small text-muted mb-2"><span>Urgency add-on</span><span
                     class="mono sidebar-urgency">$0.00</span></div>
                 <div class="d-flex justify-content-between small text-muted mb-2"><span>Platform fee (15%)</span><span
@@ -235,8 +263,13 @@ $avColor = $avColors[$expertUserId % count($avColors)];
             <div class="br-profile-section text-center py-5">
               <div style="font-size:3.5rem;margin-bottom:16px">🎉</div>
               <h3 class="fw-bold mb-2" style="font-family:'Playfair Display',serif">Problem Submitted!</h3>
-              <p class="text-muted mb-4"><?= htmlspecialchars($expert['full_name']) ?> has been notified. You'll receive
-                their voice + written response within <?= $expert['max_response_hours'] ?> hours.</p>
+              <?php if ($isGlobal): ?>
+                <p class="text-muted mb-4">Domain-matched experts have been notified. You'll receive a response within
+                  48 hours.</p>
+              <?php else: ?>
+                <p class="text-muted mb-4"><?= htmlspecialchars($expert['full_name']) ?> has been notified. You'll receive
+                  their voice + written response within <?= $expert['max_response_hours'] ?> hours.</p>
+              <?php endif; ?>
               <div class="br-alert br-alert-success d-flex gap-2 align-items-center justify-content-center mb-4"
                 style="max-width:420px;margin:0 auto">
                 <i class="bi bi-check-circle-fill text-success"></i>
@@ -318,49 +351,44 @@ $avColor = $avColors[$expertUserId % count($avColors)];
 </main>
 
 <script>
-  const APP_URL = '<?= APP_URL ?>';
-  const BASE_RATE = <?= $baseFee ?>;
-  const PLAT_FEE = <?= $platformFee ?>;
+  // NOTE: APP_URL, BASE_RATE, PLAT_FEE are used by initSubmitWizard in main.js
+  // These const declarations run at parse time (before main.js), which is fine
+  // because they're just PHP-rendered values, not classes.
+  const APP_URL  = '<?= APP_URL ?>';
+  const BASE_RATE = <?= (float)$baseFee ?>;
+  const PLAT_FEE  = <?= (float)$platformFee ?>;
 
-  // Init voice recorder
-  window._recorder = new VoiceRecorder({
-    dot: 'rec-dot', timer: 'rec-timer', status: 'rec-status',
-    wave: 'rec-wave', main: 'rec-main', trash: 'rec-trash', play: 'rec-play',
-    audio: 'rec-audio', preview: 'rec-preview'
-  });
-
-  // Char counter
-  document.getElementById('problem-text').addEventListener('input', function () {
-    document.getElementById('char-count').textContent = `${this.value.length} / 3000`;
-  });
-
-  // Urgency selection
-  function selectUrgency(el) {
-    document.querySelectorAll('.br-urgency-opt').forEach(o => o.classList.remove('selected'));
-    el.classList.add('selected');
-    const price = parseInt(el.dataset.price || 0);
-    const total = BASE_RATE + price + Math.round((BASE_RATE + price) * 0.15);
-    document.querySelectorAll('.sidebar-urgency').forEach(e => e.textContent = '$' + price);
-    document.querySelectorAll('.sidebar-total').forEach(e => e.textContent = '$' + total.toFixed(2));
-    document.getElementById('urgency-input').value = el.dataset.urgency;
-  }
-
+  // setGateway & handleFiles are called from inline HTML onclick attrs
+  // so they must be plain function declarations (hoisted)
   function setGateway(gateway) {
     document.getElementById('payment-gateway-input').value = gateway;
   }
-
-  // File uploads
   function handleFiles(input) {
     const list = document.getElementById('file-list');
     Array.from(input.files).forEach(f => {
       const item = document.createElement('div');
       item.className = 'd-flex align-items-center gap-2 mt-2 small';
       item.style.cssText = 'background:var(--br-dark3);border-radius:8px;padding:7px 10px';
-      item.innerHTML = `<i class="bi bi-paperclip text-muted"></i><span>${f.name}</span><span class="text-subtle">${(f.size / 1024 / 1024).toFixed(2)} MB</span>`;
+      item.innerHTML = `<i class="bi bi-paperclip text-muted"></i><span>${f.name}</span><span class="text-subtle">${(f.size/1024/1024).toFixed(2)} MB</span>`;
       list.appendChild(item);
     });
   }
 
-  // Step navigation (handled by main.js initSubmitWizard)
+  // ── IMPORTANT: VoiceRecorder is defined in main.js which loads AFTER this
+  // inline script (via footer.php). So we must defer the instantiation until
+  // after all scripts are loaded. DOMContentLoaded fires after main.js runs.
+  document.addEventListener('DOMContentLoaded', function () {
+    window._recorder = new VoiceRecorder({
+      dot    : 'rec-dot',
+      timer  : 'rec-timer',
+      status : 'rec-status',
+      wave   : 'rec-wave',
+      main   : 'rec-main',
+      trash  : 'rec-trash',
+      play   : 'rec-play',
+      audio  : 'rec-audio',
+      preview: 'rec-preview'
+    });
+  });
 </script>
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

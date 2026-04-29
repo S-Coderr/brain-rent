@@ -1,6 +1,7 @@
 <?php
 // includes/footer.php
 ?>
+<?php if (empty($hideFooter)): ?>
 <!-- ======= FOOTER ======= -->
 <footer class="br-footer mt-5">
   <div class="container">
@@ -60,6 +61,7 @@
     </div>
   </div>
 </footer>
+<?php endif; ?>
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

@@ -2,6 +2,7 @@
 // admin/index.php — Admin Dashboard
 require_once __DIR__ . '/../config/auth.php';
 requireAdmin();
+require_once __DIR__ . '/../includes/media_blob_helpers.php';
 
 $title = 'Admin Portal';
 require_once __DIR__ . '/../includes/header.php';
@@ -18,6 +19,12 @@ $stats = [
     'books' => $db->fetchOne("SELECT COUNT(*) AS cnt FROM libraries")['cnt'] ?? 0,
     'videos' => $db->fetchOne("SELECT COUNT(*) AS cnt FROM problem_solving_videos")['cnt'] ?? 0,
 ];
+
+$uploadSummary = brGetUploadedMediaSummary($db);
+$recentStoredUploads = brFetchUploadedMedia($db, null, 12);
+$uploadSizeMb = $uploadSummary['total_bytes'] > 0
+    ? round($uploadSummary['total_bytes'] / (1024 * 1024), 2)
+    : 0;
 
 $pendingExperts = $db->fetchAll(
     "SELECT u.id, u.full_name, u.email, u.phone, u.country, u.created_at,
@@ -95,13 +102,34 @@ $recentVideos = $db->fetchAll(
      FROM problem_solving_videos v LEFT JOIN users u ON v.uploaded_by = u.id
      ORDER BY v.created_at DESC LIMIT 5"
 );
+
+$recentProblems = $db->fetchAll(
+    "SELECT tr.*, u.full_name AS client_name, e.full_name AS expert_name
+     FROM thinking_requests tr
+     LEFT JOIN users u ON tr.client_id = u.id
+     LEFT JOIN users e ON tr.expert_id = e.id
+     ORDER BY tr.created_at DESC LIMIT 10"
+);
 ?>
 
 <main class="py-5">
     <div class="container">
-        <div class="mb-4">
-            <h1 class="display-6 fw-bold">Admin Portal</h1>
-            <p class="text-muted">Experts, clients, and uploads overview.</p>
+        <div class="dashboard-banner p-4 p-md-5 mb-5" style="background: #3bb19b; border-radius: 20px; color: white; display: flex; justify-content: space-between; align-items: center; border: none; box-shadow: 0 8px 20px rgba(59, 177, 155, 0.3); overflow: hidden;">
+            <div style="position: relative; z-index: 2; max-width: 60%;">
+                <h1 class="display-5 fw-bold mb-2" style="color: white;">Manage Effectively With Us!</h1>
+                <p class="mb-4" style="opacity: 0.9;">Oversee the entire BrainRent ecosystem.</p>
+                <div class="d-flex flex-wrap gap-3">
+                    <div style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; display: flex; align-items: center; gap: 8px;">
+                        <div style="background: #ff5252; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem;">🎓</div>
+                        <span style="font-size: 0.9rem;">Experts <strong><?= number_format($stats['experts']) ?>+</strong></span>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; display: flex; align-items: center; gap: 8px;">
+                        <div style="background: #ffd740; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: black; font-size: 1rem;">👤</div>
+                        <span style="font-size: 0.9rem;">Clients <strong><?= number_format($stats['clients']) ?>+</strong></span>
+                    </div>
+                </div>
+            </div>
+            <div style="font-size: 8rem; z-index: 1; line-height: 1; filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.1));">🏫</div>
         </div>
 
         <?php
@@ -117,36 +145,44 @@ $recentVideos = $db->fetchAll(
 
         <div class="row g-3 mb-4">
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="br-card p-3">
-                    <div class="text-subtle small">Experts</div>
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">Experts 🧑‍🏫</div>
                     <div class="fw-bold fs-4"><?= number_format($stats['experts']) ?></div>
                 </div>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="br-card p-3">
-                    <div class="text-subtle small">Clients</div>
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">Clients 🤝</div>
                     <div class="fw-bold fs-4"><?= number_format($stats['clients']) ?></div>
                 </div>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="br-card p-3">
-                    <div class="text-subtle small">Notes</div>
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">Notes 📝</div>
                     <div class="fw-bold fs-4"><?= number_format($stats['notes']) ?></div>
                 </div>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="br-card p-3">
-                    <div class="text-subtle small">Books</div>
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">Books 📚</div>
                     <div class="fw-bold fs-4"><?= number_format($stats['books']) ?></div>
                 </div>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="br-card p-3">
-                    <div class="text-subtle small">Videos</div>
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">Videos 🎥</div>
                     <div class="fw-bold fs-4"><?= number_format($stats['videos']) ?></div>
                 </div>
             </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="br-card p-3 br-metric-interactive h-100">
+                    <div class="text-subtle small fw-semibold text-uppercase tracking-wide">DB Rows 💾</div>
+                    <div class="fw-bold fs-4"><?= number_format($uploadSummary['total_items']) ?></div>
+                </div>
+            </div>
         </div>
+
+        
 
         <div class="br-card p-3 mb-4" id="pending-experts">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -392,9 +428,59 @@ $recentVideos = $db->fetchAll(
             </div>
         </div>
 
+        <div class="row g-4 mb-4">
+            <div class="col-12">
+                <div class="br-card p-3 admin-scroll-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-semibold mb-0">Recent Problems (Requests)</h6>
+                    </div>
+                    <div class="admin-scroll-body">
+                        <div class="table-responsive">
+                            <table class="table br-table table-dark admin-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Client</th>
+                                        <th>Expert</th>
+                                        <th>Status</th>
+                                        <th>Rate</th>
+                                        <th>Created At</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($recentProblems as $p): ?>
+                                        <tr>
+                                            <td>
+                                                <div class="fw-medium"><?= htmlspecialchars(substr($p['title'], 0, 50)) ?><?= strlen($p['title']) > 50 ? '...' : '' ?></div>
+                                                <div class="text-muted small"><?= htmlspecialchars($p['urgency'] ?? 'normal') ?></div>
+                                            </td>
+                                            <td><?= htmlspecialchars($p['client_name'] ?? 'Unknown') ?></td>
+                                            <td><?= htmlspecialchars($p['expert_name'] ?? 'Unassigned') ?></td>
+                                            <td><span class="badge bg-secondary"><?= htmlspecialchars($p['status']) ?></span></td>
+                                            <td>$<?= number_format($p['agreed_rate'] ?? 0, 2) ?></td>
+                                            <td><?= htmlspecialchars(date('Y-m-d H:i', strtotime($p['created_at']))) ?></td>
+                                            <td>
+                                                <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/pages/problem.php?id=<?= (int)$p['id'] ?>" target="_blank">View</a>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (!$recentProblems): ?>
+                                        <tr>
+                                            <td colspan="7" class="text-muted text-center py-4">No problems found</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-4 admin-triple-row">
             <div class="col-lg-4">
-                <div class="br-card p-3">
+                <div class="br-card p-3 h-100 d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-semibold mb-0">Recent Notes</h6>
                         <div class="d-flex gap-2">
@@ -402,13 +488,13 @@ $recentVideos = $db->fetchAll(
                             <a class="text-warning small" href="<?= APP_URL ?>/pages/upload-notes.php">Upload</a>
                         </div>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1" style="max-height: 300px; overflow-y: auto;">
                         <table class="table br-table table-dark admin-table mb-0">
                             <thead>
                                 <tr>
-                                    <th>Title</th>
-                                    <th>Uploader</th>
-                                    <th>Actions</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Title</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Uploader</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -429,6 +515,14 @@ $recentVideos = $db->fetchAll(
                                                 target="_blank">View</a>
                                             <a class="btn br-btn-ghost btn-sm"
                                                 href="<?= APP_URL ?>/api/download-note.php?id=<?= (int) $n['id'] ?>">Download</a>
+                                            <form method="post" action="<?= APP_URL ?>/admin/actions.php" style="display:inline-block" onsubmit="return confirm('Delete this note?');">
+                                                <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
+                                                <input type="hidden" name="entity" value="notes">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="id" value="<?= (int) $n['id'] ?>">
+                                                <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/index.php">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                            </form>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -444,7 +538,7 @@ $recentVideos = $db->fetchAll(
             </div>
 
             <div class="col-lg-4">
-                <div class="br-card p-3">
+                <div class="br-card p-3 h-100 d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-semibold mb-0">Recent Books</h6>
                         <div class="d-flex gap-2">
@@ -452,13 +546,13 @@ $recentVideos = $db->fetchAll(
                             <a class="text-warning small" href="<?= APP_URL ?>/pages/upload-ebook.php">Upload</a>
                         </div>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1" style="max-height: 300px; overflow-y: auto;">
                         <table class="table br-table table-dark admin-table mb-0">
                             <thead>
                                 <tr>
-                                    <th>Title</th>
-                                    <th>Uploader</th>
-                                    <th>Actions</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Title</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Uploader</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -479,6 +573,14 @@ $recentVideos = $db->fetchAll(
                                                 target="_blank">View</a>
                                             <a class="btn br-btn-ghost btn-sm"
                                                 href="<?= APP_URL ?>/api/download-ebook.php?id=<?= (int) $b['id'] ?>">Download</a>
+                                            <form method="post" action="<?= APP_URL ?>/admin/actions.php" style="display:inline-block" onsubmit="return confirm('Delete this book?');">
+                                                <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
+                                                <input type="hidden" name="entity" value="libraries">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="id" value="<?= (int) $b['id'] ?>">
+                                                <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/index.php">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                            </form>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -494,7 +596,7 @@ $recentVideos = $db->fetchAll(
             </div>
 
             <div class="col-lg-4">
-                <div class="br-card p-3">
+                <div class="br-card p-3 h-100 d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-semibold mb-0">Recent Videos</h6>
                         <div class="d-flex gap-2">
@@ -502,13 +604,13 @@ $recentVideos = $db->fetchAll(
                             <a class="text-warning small" href="<?= APP_URL ?>/pages/upload-video.php">Upload</a>
                         </div>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1" style="max-height: 300px; overflow-y: auto;">
                         <table class="table br-table table-dark admin-table mb-0">
                             <thead>
                                 <tr>
-                                    <th>Title</th>
-                                    <th>Uploader</th>
-                                    <th>Actions</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Title</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Uploader</th>
+                                    <th style="position: sticky; top: 0; background-color: var(--br-dark2); z-index: 1;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -529,6 +631,14 @@ $recentVideos = $db->fetchAll(
                                                 target="_blank">Open</a>
                                             <a class="btn br-btn-ghost btn-sm"
                                                 href="<?= APP_URL ?>/api/download-video.php?id=<?= (int) $v['id'] ?>">Download</a>
+                                            <form method="post" action="<?= APP_URL ?>/admin/actions.php" style="display:inline-block" onsubmit="return confirm('Delete this video?');">
+                                                <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
+                                                <input type="hidden" name="entity" value="videos">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="id" value="<?= (int) $v['id'] ?>">
+                                                <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/index.php">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                            </form>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

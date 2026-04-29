@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 $db = Database::getInstance();
 $userId = currentUserId();
+$hideFooter = true;
 
 // Metrics
 $metrics = $db->fetchOne(
@@ -23,13 +24,14 @@ $metrics = $db->fetchOne(
 $requests = $db->fetchAll(
   "SELECT tr.id, tr.title, tr.status, tr.agreed_rate, tr.urgency, tr.created_at,
             u.full_name AS expert_name
-     FROM thinking_requests tr
-     INNER JOIN users u ON tr.expert_id = u.id
+    FROM thinking_requests tr
+    LEFT JOIN users u ON tr.expert_id = u.id
      WHERE tr.client_id = ?
      ORDER BY tr.created_at DESC",
   [$userId]
 );
 $recentRequests = array_slice($requests, 0, 6);
+
 
 $statusLabels = [
   'submitted' => ['br-status-submitted', '📬 Submitted'],
@@ -49,16 +51,16 @@ $statusLabels = [
       <div class="text-subtle" style="font-size:.72rem;font-weight:600;margin-bottom:2px">CLIENT PORTAL</div>
       <div class="fw-semibold"><?= htmlspecialchars($user['full_name']) ?></div>
     </div>
-    <a href="#overview" class="br-nav-item active" onclick="showSection('overview',this)"><i
+    <a href="javascript:void(0)" class="br-nav-item active" onclick="showSection('overview',this)"><i
         class="bi bi-grid icon me-2"></i>Overview</a>
-    <a href="#requests" class="br-nav-item" onclick="showSection('requests',this)">
+    <a href="javascript:void(0)" class="br-nav-item" onclick="showSection('requests',this)">
       <i class="bi bi-clipboard icon me-2"></i>My Requests
       <?php if ($metrics['awaiting'] > 0): ?><span
           class="br-nav-badge"><?= $metrics['awaiting'] ?></span><?php endif; ?>
     </a>
-    <a href="#notifications" class="br-nav-item" onclick="showSection('notifications',this)"><i
+    <a href="javascript:void(0)" class="br-nav-item" onclick="showSection('notifications',this)"><i
         class="bi bi-bell icon me-2"></i>Notifications</a>
-    <a href="#saved" class="br-nav-item" onclick="showSection('saved',this)"><i
+    <a href="javascript:void(0)" class="br-nav-item" onclick="showSection('saved',this)"><i
         class="bi bi-bookmark icon me-2"></i>Saved Experts</a>
     <div style="margin-top:auto;padding-top:20px;border-top:1px solid var(--br-border)">
       <a href="<?= APP_URL ?>/pages/browse.php" class="br-nav-item"><i class="bi bi-search icon me-2"></i>Find
@@ -75,38 +77,37 @@ $statusLabels = [
 
     <!-- OVERVIEW -->
     <div id="section-overview">
-      <div class="mb-4">
-        <h1 class="br-section-title fs-3 mb-1">Good day, <?= htmlspecialchars(explode(' ', $user['full_name'])[0]) ?> 👋
-        </h1>
-        <?php if ($metrics['awaiting'] > 0): ?>
-          <p class="text-muted small">You have <?= $metrics['awaiting'] ?> response(s) waiting for your review.</p>
-        <?php else: ?>
-          <p class="text-muted small">Your expert thinking dashboard.</p>
-        <?php endif; ?>
+      <div class="dashboard-banner p-4 mb-4" style="background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); border-radius: 20px; color: white; display: flex; justify-content: space-between; align-items: center; border: none; box-shadow: 0 10px 20px rgba(161, 140, 209, 0.3);">
+        <div style="position: relative; z-index: 2;">
+            <p style="margin-bottom: 5px; font-size: 0.9rem; opacity: 0.9;"><?= date('F j, Y') ?></p>
+            <h1 class="display-6 fw-bold mb-1" style="color: white;">Welcome back, <?= htmlspecialchars(explode(' ', $user['full_name'])[0]) ?>!</h1>
+            <p class="mb-0" style="opacity: 0.9;">Always stay updated in your student portal</p>
+        </div>
+        <div style="font-size: 6rem; z-index: 1; line-height: 1; text-shadow: 2px 2px 10px rgba(0,0,0,0.1);">👨‍🎓</div>
       </div>
 
       <!-- Metrics -->
       <div class="row g-3 mb-4">
         <div class="col-6 col-md-3">
-          <div class="br-metric-card">
+          <div class="br-metric-card br-metric-interactive">
             <div class="br-metric-label">Total Requests</div>
             <div class="br-metric-value"><?= $metrics['total'] ?></div>
           </div>
         </div>
         <div class="col-6 col-md-3">
-          <div class="br-metric-card">
+          <div class="br-metric-card br-metric-interactive">
             <div class="br-metric-label">Active</div>
             <div class="br-metric-value text-violet"><?= $metrics['active'] ?></div>
           </div>
         </div>
         <div class="col-6 col-md-3">
-          <div class="br-metric-card">
+          <div class="br-metric-card br-metric-interactive">
             <div class="br-metric-label">Awaiting Review</div>
             <div class="br-metric-value text-gold"><?= $metrics['awaiting'] ?></div>
           </div>
         </div>
         <div class="col-6 col-md-3">
-          <div class="br-metric-card">
+          <div class="br-metric-card br-metric-interactive">
             <div class="br-metric-label">Total Spent</div>
             <div class="br-metric-value text-gold">$<?= number_format($metrics['spent'], 0) ?></div>
           </div>
@@ -146,14 +147,14 @@ $statusLabels = [
             <tbody>
               <?php foreach ($recentRequests as $req):
                 [$cls, $label] = $statusLabels[$req['status']] ?? ['br-status-completed', $req['status']];
-                ?>
+              ?>
                 <tr>
                   <td>
                     <div class="fw-medium small">
-                      <?= htmlspecialchars(substr($req['title'], 0, 60)) ?>  <?= strlen($req['title']) > 60 ? '…' : '' ?>
+                      <?= htmlspecialchars(substr($req['title'], 0, 60)) ?> <?= strlen($req['title']) > 60 ? '…' : '' ?>
                     </div>
                   </td>
-                  <td class="text-muted small"><?= htmlspecialchars($req['expert_name']) ?></td>
+                  <td class="text-muted small"><?= htmlspecialchars($req['expert_name'] ?? 'Unassigned') ?></td>
                   <td><span class="br-status <?= $cls ?>"><?= $label ?></span></td>
                   <td class="mono text-gold small">$<?= number_format($req['agreed_rate'], 0) ?></td>
                   <td>
@@ -203,14 +204,14 @@ $statusLabels = [
             <tbody>
               <?php foreach ($requests as $req):
                 [$cls, $label] = $statusLabels[$req['status']] ?? ['br-status-completed', $req['status']];
-                ?>
+              ?>
                 <tr>
                   <td>
                     <div class="fw-medium small">
-                      <?= htmlspecialchars(substr($req['title'], 0, 70)) ?>  <?= strlen($req['title']) > 70 ? '…' : '' ?>
+                      <?= htmlspecialchars(substr($req['title'], 0, 70)) ?> <?= strlen($req['title']) > 70 ? '…' : '' ?>
                     </div>
                   </td>
-                  <td class="text-muted small"><?= htmlspecialchars($req['expert_name']) ?></td>
+                  <td class="text-muted small"><?= htmlspecialchars($req['expert_name'] ?? 'Unassigned') ?></td>
                   <td><span class="br-status <?= $cls ?>"><?= $label ?></span></td>
                   <td class="text-muted small"><?= htmlspecialchars($req['urgency'] ?? 'normal') ?></td>
                   <td class="mono text-gold small">$<?= number_format($req['agreed_rate'], 0) ?></td>
@@ -238,13 +239,20 @@ $statusLabels = [
       </div>
     </div><!-- /requests -->
 
-    <!-- NOTIFICATIONS (placeholder) -->
+    <!-- NOTIFICATIONS -->
     <div id="section-notifications" style="display:none">
-      <div class="mb-4">
-        <h2 class="br-section-title fs-4 mb-1">Notifications</h2>
-        <p class="text-muted small">Your latest updates will appear here.</p>
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2 class="br-section-title fs-4 mb-1">Notifications</h2>
+          <p class="text-muted small">Your latest updates and alerts.</p>
+        </div>
+        <button class="btn br-btn-ghost btn-sm" id="dash-mark-all-read">
+          <i class="bi bi-check2-all me-1"></i>Mark All Read
+        </button>
       </div>
-      <div class="br-card p-4 text-muted small">No notifications to show.</div>
+      <div id="dash-notif-list">
+        <div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-warning"></div> Loading...</div>
+      </div>
     </div>
 
     <!-- SAVED (placeholder) -->
@@ -254,6 +262,11 @@ $statusLabels = [
         <p class="text-muted small">Save experts to revisit later.</p>
       </div>
       <div class="br-card p-4 text-muted small">No saved experts yet.</div>
+    </div>
+    
+    <!-- Special Footer for Dashboard (Minimal) -->
+    <div class="br-dash-footer text-center py-3 border-top small text-muted mt-auto">
+      © <?= date('Y') ?> BrainRent · 🔒 Secured Dashboard Mode
     </div>
 
   </div><!-- /dash-main -->
@@ -291,6 +304,8 @@ $statusLabels = [
     if (target) target.style.display = 'block';
     document.querySelectorAll('.br-nav-item').forEach(a => a.classList.remove('active'));
     if (el) el.classList.add('active');
+    // Lazy-load notifications panel on demand
+    if (id === 'notifications') loadDashNotifications();
   }
 
   async function openRequestModal(requestId) {
@@ -464,5 +479,72 @@ $statusLabels = [
     showSection('requests', nav);
     openRequestModal(requestId);
   }
+
+  // ── Notification section ──────────────────────────────────────────────
+  const notifTypeIcons = {
+    request_accepted : '✅',
+    request_declined : '❌',
+    response_ready   : '🎙️',
+    payment_released : '💰',
+    request_reraised : '🔄',
+    default          : '🔔',
+  };
+
+  async function loadDashNotifications() {
+    const el = document.getElementById('dash-notif-list');
+    if (!el) return;
+    try {
+      const res  = await fetch(`${APP_URL}/api/notifications.php?limit=50`);
+      const data = await res.json();
+      if (!data.success) return;
+
+      const list = data.notifications || [];
+      if (!list.length) {
+        el.innerHTML = '';
+        return;
+      }
+
+      el.innerHTML = list.map(n => {
+        const icon = notifTypeIcons[n.type] || notifTypeIcons.default;
+        const unread = n.is_read == 0;
+        const tag  = n.link ? 'a' : 'div';
+        const href = n.link ? `href="${escHtml(n.link)}"` : '';
+        return `<${tag} ${href} class="br-notif-item${unread ? ' unread' : ''}" style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--br-border);text-decoration:none;color:inherit;transition:background .15s" onmouseover="this.style.background='var(--br-dark3)'" onmouseout="this.style.background=''">
+          <div style="font-size:1.3rem;flex-shrink:0;margin-top:2px">${icon}</div>
+          <div style="flex:1;min-width:0">
+            <div class="fw-semibold small${unread ? ' text-white' : ' text-muted'}" style="margin-bottom:2px">${escHtml(n.title)}</div>
+            <div class="text-muted" style="font-size:.8rem;line-height:1.4">${escHtml(n.message)}</div>
+            <div class="text-subtle" style="font-size:.72rem;margin-top:4px">${timeAgo(n.created_at)}</div>
+          </div>
+          ${unread ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--br-gold);flex-shrink:0;margin-top:6px"></div>' : ''}
+        </${tag}>`;
+      }).join('');
+    } catch(_) {
+      el.innerHTML = '<div class="br-card p-4 text-center text-muted small">Unable to load notifications.</div>';
+    }
+  }
+
+  function timeAgo(dateStr) {
+    const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+    if (diff < 60)    return 'just now';
+    if (diff < 3600)  return Math.floor(diff/60)   + ' min ago';
+    if (diff < 86400) return Math.floor(diff/3600)  + ' hr ago';
+    return Math.floor(diff/86400) + ' days ago';
+  }
+
+  // Hook showSection to lazy-load notifications
+  const _origShowSection = showSection;
+  window.showSection = function(id, el) {
+    _origShowSection(id, el);
+    if (id === 'notifications') loadDashNotifications();
+  };
+
+  // Mark-all-read button
+  document.getElementById('dash-mark-all-read')?.addEventListener('click', async () => {
+    await fetch(`${APP_URL}/api/notifications.php?action=mark_all_read`);
+    BrainRent.loadNotifications(); // refresh navbar badge
+    loadDashNotifications();       // refresh panel
+    BrainRent.toast('All notifications marked as read', 'success');
+  });
 </script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

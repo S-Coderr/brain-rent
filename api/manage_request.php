@@ -33,7 +33,8 @@ if ($action === 'accept') {
     requireExpert();
 
     $req = $db->fetchOne(
-        "SELECT * FROM thinking_requests WHERE id = ? AND expert_id = ? AND status = 'submitted'",
+        "SELECT * FROM thinking_requests
+         WHERE id = ? AND expert_id = ? AND status = 'submitted' AND is_global = 0",
         [$requestId, $userId]
     );
     if (!$req)
@@ -66,7 +67,8 @@ if ($action === 'decline') {
     requireExpert();
 
     $req = $db->fetchOne(
-        "SELECT * FROM thinking_requests WHERE id = ? AND expert_id = ? AND status = 'submitted'",
+        "SELECT * FROM thinking_requests
+         WHERE id = ? AND expert_id = ? AND status = 'submitted' AND is_global = 0",
         [$requestId, $userId]
     );
     if (!$req)
@@ -98,6 +100,38 @@ if ($action === 'decline') {
 }
 
 // =============================================
+// EXPERT: Accept Global Request
+// =============================================
+if ($action === 'accept_global') {
+    requireExpert();
+
+    $req = $db->fetchOne(
+        "SELECT * FROM thinking_requests
+         WHERE id = ? AND is_global = 1 AND status = 'submitted'",
+        [$requestId]
+    );
+    if (!$req)
+        jsonResponse(['success' => false, 'error' => 'Global request not found or already taken'], 404);
+
+    $db->execute(
+        "UPDATE thinking_requests
+         SET expert_id = ?, status = 'accepted', accepted_at = NOW(), thinking_started_at = NOW()
+         WHERE id = ?",
+        [$userId, $requestId]
+    );
+
+    // Notify client
+    $db->execute(
+        "INSERT INTO notifications (user_id, type, title, message, link)
+         VALUES (?, 'request_accepted', 'Global request accepted', 'Your global request has been picked up by an expert.', ?)",
+        [
+            $req['client_id'],
+            APP_URL . '/pages/dashboard-client.php?request_id=' . $requestId
+        ]
+    );
+
+    jsonResponse(['success' => true, 'message' => 'Global request accepted']);
+}
 // EXPERT: Submit Response
 // =============================================
 if ($action === 'submit_response') {
@@ -113,11 +147,11 @@ if ($action === 'submit_response') {
     } else {
         $req = $db->fetchOne(
             "SELECT * FROM thinking_requests
-             WHERE id = ?
-               AND (
-                    status = 'submitted'
-                    OR (expert_id = ? AND status IN ('accepted','thinking'))
-               )",
+                         WHERE id = ?
+                             AND (
+                                        (is_global = 1 AND status IN ('submitted','accepted','thinking','completed','responded'))
+                                        OR (is_global = 0 AND expert_id = ? AND status IN ('submitted','accepted','thinking','completed','responded'))
+                             )",
             [$requestId, $userId]
         );
     }
@@ -207,6 +241,42 @@ if ($action === 'submit_response') {
                 $thinkingMinutes,
             ]
         );
+    }
+
+    // Handle Attachments
+    if (!empty($_FILES['response_attachments']['name'][0])) {
+        $files = $_FILES['response_attachments'];
+        $count = count($files['name']);
+        for ($i = 0; $i < $count; $i++) {
+            if ($files['error'][$i] !== UPLOAD_ERR_OK)
+                continue;
+
+            $dir = __DIR__ . "/../uploads/attachments/{$requestId}/";
+            if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+                continue;
+            }
+
+            $ext = strtolower(pathinfo($files['name'][$i], PATHINFO_EXTENSION));
+            $filename = uniqid('resp_att_') . '.' . $ext;
+            $path = $dir . $filename;
+            if (!move_uploaded_file($files['tmp_name'][$i], $path)) {
+                continue;
+            }
+
+            $db->execute(
+                "INSERT INTO thinking_request_attachments
+                    (request_id, uploaded_by, file_path, file_name, file_size_mb, file_type)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    $requestId,
+                    $userId,
+                    $path,
+                    htmlspecialchars($files['name'][$i]),
+                    round($files['size'][$i] / (1024 * 1024), 2),
+                    $files['type'][$i],
+                ]
+            );
+        }
     }
 
     // Update request status
@@ -308,6 +378,45 @@ if ($action === 'update_problem') {
     );
 
     jsonResponse(['success' => true, 'message' => 'Problem updated']);
+}
+
+// =============================================
+// EXPERT: Update Profile
+// =============================================
+if ($action === 'update_profile') {
+    requireExpert();
+    
+    $headline = htmlspecialchars(trim($_POST['headline'] ?? ''));
+    $bio = htmlspecialchars(trim($_POST['bio'] ?? ''));
+    $expertiseAreas = array_filter(array_map('trim', explode(',', $_POST['expertise_areas'] ?? '')));
+    $rate = (float) ($_POST['rate_per_session'] ?? 0);
+    $maxHours = (int) ($_POST['max_response_hours'] ?? 48);
+    $maxActive = (int) ($_POST['max_active_requests'] ?? 5);
+    $available = (int) ($_POST['is_available'] ?? 1);
+
+    $db->execute(
+        "UPDATE expert_profiles 
+         SET headline = ?, 
+             bio = ?, 
+             expertise_areas = ?, 
+             rate_per_session = ?, 
+             max_response_hours = ?, 
+             max_active_requests = ?, 
+             is_available = ? 
+         WHERE user_id = ?",
+        [
+            $headline,
+            $bio,
+            json_encode($expertiseAreas),
+            $rate,
+            $maxHours,
+            $maxActive,
+            $available,
+            $userId
+        ]
+    );
+
+    jsonResponse(['success' => true, 'message' => 'Profile updated successfully']);
 }
 
 // =============================================

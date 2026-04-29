@@ -38,8 +38,11 @@ if ($isAdmin) {
     $canAccess = true;
 } elseif ((int) $request['client_id'] === $userId) {
     $canAccess = true;
-} elseif ($isVerifiedExpert && ($request['status'] === 'submitted' || (int) $request['expert_id'] === $userId)) {
-    $canAccess = true;
+} elseif ($isVerifiedExpert) {
+    $isGlobal = (int) ($request['is_global'] ?? 0) === 1;
+    if ((int) ($request['expert_id'] ?? 0) === $userId || ($isGlobal && $request['status'] === 'submitted')) {
+        $canAccess = true;
+    }
 }
 
 if (!$canAccess) {
@@ -56,6 +59,21 @@ $response = $db->fetchOne(
      LIMIT 1",
     [$requestId]
 );
+
+$allAttachments = $db->fetchAll(
+    "SELECT * FROM thinking_request_attachments WHERE request_id = ? ORDER BY id ASC",
+    [$requestId]
+);
+
+$clientAttachments = [];
+$expertAttachments = [];
+foreach ($allAttachments as $att) {
+    if ((int)$att['uploaded_by'] === (int)$request['client_id']) {
+        $clientAttachments[] = $att;
+    } else {
+        $expertAttachments[] = $att;
+    }
+}
 
 $adminResponseHidden = false;
 if ($isAdmin && $response && in_array($response['responder_type'] ?? '', ['expert', 'both'], true)) {
@@ -87,11 +105,12 @@ function brPathToUrl(?string $path): ?string
         return $path;
     }
     $path = str_replace('\\', '/', $path);
-    $pos = strpos($path, '/uploads/');
+    $pos = strpos($path, 'uploads/');
     if ($pos === false) {
         return null;
     }
-    return APP_URL . substr($path, $pos);
+    $relPath = substr($path, $pos);
+    return APP_URL . '/api/serve_media.php?path=' . urlencode($relPath);
 }
 
 $problemVoiceUrl = brPathToUrl($request['problem_voice_path'] ?? null);
@@ -143,6 +162,21 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="mt-3">
                             <label class="br-form-label">Problem Voice</label>
                             <audio controls class="w-100" src="<?= htmlspecialchars($problemVoiceUrl) ?>"></audio>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($clientAttachments)): ?>
+                        <div class="mt-4">
+                            <label class="br-form-label">Attached Files</label>
+                            <div class="d-flex flex-column gap-2 mt-2">
+                                <?php foreach ($clientAttachments as $att): ?>
+                                    <a href="<?= brPathToUrl($att['file_path']) ?>" target="_blank" class="text-decoration-none d-flex align-items-center gap-2 p-2" style="background:var(--br-dark3); border-radius:8px; border:1px solid var(--br-border);">
+                                        <i class="bi bi-paperclip text-muted"></i>
+                                        <span class="small text-dark text-truncate" style="max-width: 200px;"><?= htmlspecialchars($att['file_name']) ?></span>
+                                        <span class="small text-subtle ms-auto"><?= $att['file_size_mb'] ?> MB</span>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -209,6 +243,21 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                         <?php endif; ?>
 
+                        <?php if (!empty($expertAttachments)): ?>
+                            <div class="mb-3">
+                                <div class="text-subtle small mb-2">Attached Files</div>
+                                <div class="d-flex flex-column gap-2">
+                                    <?php foreach ($expertAttachments as $att): ?>
+                                        <a href="<?= brPathToUrl($att['file_path']) ?>" target="_blank" class="text-decoration-none d-flex align-items-center gap-2 p-2" style="background:var(--br-dark3); border-radius:8px; border:1px solid var(--br-border);">
+                                            <i class="bi bi-paperclip text-muted"></i>
+                                            <span class="small text-dark text-truncate" style="max-width: 200px;"><?= htmlspecialchars($att['file_name']) ?></span>
+                                            <span class="small text-subtle ms-auto"><?= $att['file_size_mb'] ?> MB</span>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
                         <?php $insights = json_decode((string) ($response['key_insights'] ?? '[]'), true) ?: []; ?>
                         <?php if ($insights): ?>
                             <div class="mb-3">
@@ -271,6 +320,11 @@ require_once __DIR__ . '/../includes/header.php';
                                 <label class="br-form-label">Resources</label>
                                 <textarea class="br-form-control form-control" name="resource_links" rows="2"></textarea>
                             </div>
+                            <div class="mb-3">
+                                <label class="br-form-label">Attach Files (Optional)</label>
+                                <input type="file" class="form-control br-form-control" name="response_attachments[]" multiple>
+                                <small class="text-muted d-block mt-1">Attach any files, documents, or diagrams to your solution.</small>
+                            </div>
                             <div class="mb-2">
                                 <label class="br-form-label">Minutes</label>
                                 <input type="number" class="br-form-control form-control" name="thinking_minutes" min="1">
@@ -306,8 +360,8 @@ require_once __DIR__ . '/../includes/header.php';
     const APP_URL = '<?= APP_URL ?>';
     const REQUEST_ID = <?= (int) $request['id'] ?>;
 
-    const problemRecorder = document.getElementById('solution-form')
-        ? new VoiceRecorder({
+    const problemRecorder = document.getElementById('solution-form') ?
+        new VoiceRecorder({
             dot: 'problem-rec-dot',
             timer: 'problem-rec-timer',
             status: 'problem-rec-status',
@@ -317,13 +371,16 @@ require_once __DIR__ . '/../includes/header.php';
             play: 'problem-rec-play',
             audio: 'problem-rec-audio',
             preview: 'problem-rec-preview'
-        })
-        : null;
+        }) :
+        null;
 
-    document.getElementById('problem-edit-form')?.addEventListener('submit', async function (e) {
+    document.getElementById('problem-edit-form')?.addEventListener('submit', async function(e) {
         e.preventDefault();
         const fd = new URLSearchParams(new FormData(this));
-        const res = await fetch(APP_URL + '/api/manage_request.php', { method: 'POST', body: fd });
+        const res = await fetch(APP_URL + '/api/manage_request.php', {
+            method: 'POST',
+            body: fd
+        });
         const data = await res.json();
         BrainRent.toast(data.success ? data.message : (data.error || 'Update failed'), data.success ? 'success' : 'error');
         if (data.success) {
@@ -331,7 +388,7 @@ require_once __DIR__ . '/../includes/header.php';
         }
     });
 
-    document.getElementById('solution-form')?.addEventListener('submit', async function (e) {
+    document.getElementById('solution-form')?.addEventListener('submit', async function(e) {
         e.preventDefault();
         const fd = new FormData(this);
         if (problemRecorder) {
@@ -341,7 +398,10 @@ require_once __DIR__ . '/../includes/header.php';
         submitBtn.disabled = true;
         submitBtn.textContent = 'Submitting...';
 
-        const res = await fetch(APP_URL + '/api/manage_request.php', { method: 'POST', body: fd });
+        const res = await fetch(APP_URL + '/api/manage_request.php', {
+            method: 'POST',
+            body: fd
+        });
         const data = await res.json();
         BrainRent.toast(data.success ? data.message : (data.error || 'Submit failed'), data.success ? 'success' : 'error');
         if (data.success) {
@@ -353,8 +413,14 @@ require_once __DIR__ . '/../includes/header.php';
     });
 
     document.getElementById('btn-reraise')?.addEventListener('click', async () => {
-        const fd = new URLSearchParams({ action: 'reraise', request_id: String(REQUEST_ID) });
-        const res = await fetch(APP_URL + '/api/manage_request.php', { method: 'POST', body: fd });
+        const fd = new URLSearchParams({
+            action: 'reraise',
+            request_id: String(REQUEST_ID)
+        });
+        const res = await fetch(APP_URL + '/api/manage_request.php', {
+            method: 'POST',
+            body: fd
+        });
         const data = await res.json();
         BrainRent.toast(data.success ? data.message : (data.error || 'Could not re-raise'), data.success ? 'success' : 'error');
         if (data.success) {
@@ -372,7 +438,10 @@ require_once __DIR__ . '/../includes/header.php';
             usefulness_rating: '5',
             review_text: 'Completed from problem page.'
         });
-        const res = await fetch(APP_URL + '/api/manage_request.php', { method: 'POST', body: fd });
+        const res = await fetch(APP_URL + '/api/manage_request.php', {
+            method: 'POST',
+            body: fd
+        });
         const data = await res.json();
         BrainRent.toast(data.success ? data.message : (data.error || 'Could not complete'), data.success ? 'success' : 'error');
         if (data.success) {

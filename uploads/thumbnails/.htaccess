@@ -1,0 +1,2 @@
+# Allow direct web access to thumbnails (these are public covers)
+Require all granted

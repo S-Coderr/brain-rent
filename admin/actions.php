@@ -228,6 +228,10 @@ if ($action === 'delete') {
 
     $db->execute("DELETE FROM {$table} WHERE id = ?", [$id]);
 
+    if (in_array($table, ['notes', 'libraries', 'problem_solving_videos'], true)) {
+        $db->execute("DELETE FROM uploaded_files WHERE entity_type = ? AND entity_id = ?", [$table, $id]);
+    }
+
     foreach ($fileCols as $col) {
         if (empty($row[$col])) {
             continue;

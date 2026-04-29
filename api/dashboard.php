@@ -38,7 +38,7 @@ if ($type === 'client') {
             u.full_name AS expert_name, u.profile_photo AS expert_photo,
             ec.name AS category_name
          FROM thinking_requests tr
-         INNER JOIN users u ON tr.expert_id = u.id
+         LEFT JOIN users u ON tr.expert_id = u.id
          LEFT  JOIN expertise_categories ec ON tr.category_id = ec.id
          WHERE tr.client_id = ?
          ORDER BY tr.created_at DESC
@@ -99,8 +99,9 @@ if ($type === 'expert') {
          FROM thinking_requests tr
          INNER JOIN users u ON tr.client_id = u.id
          WHERE tr.status = 'submitted'
+           AND (tr.is_global = 1 OR tr.expert_id = ?)
          ORDER BY tr.urgency DESC, tr.created_at ASC",
-        []
+        [$userId]
     );
 
     $activeRequests = $db->fetchAll(
@@ -108,10 +109,10 @@ if ($type === 'expert') {
                 tr.response_deadline, u.full_name AS client_name
          FROM thinking_requests tr
          INNER JOIN users u ON tr.client_id = u.id
-         WHERE tr.status = 'submitted'
+         WHERE (tr.status = 'submitted' AND (tr.is_global = 1 OR tr.expert_id = ?))
             OR (tr.expert_id = ? AND tr.status IN ('accepted','thinking'))
          ORDER BY tr.response_deadline ASC",
-        [$userId]
+        [$userId, $userId]
     );
 
     $recentEarnings = $db->fetchAll(

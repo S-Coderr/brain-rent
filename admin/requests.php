@@ -10,7 +10,7 @@ $db = Database::getInstance();
 
 $openRequests = $db->fetchAll(
     "SELECT tr.id, tr.title, tr.status, tr.urgency, tr.created_at,
-            tr.agreed_rate, tr.currency,
+            tr.agreed_rate, tr.currency, tr.is_global,
             c.full_name AS client_name,
             e.full_name AS preferred_expert_name
      FROM thinking_requests tr
@@ -21,7 +21,7 @@ $openRequests = $db->fetchAll(
 );
 
 $allRequests = $db->fetchAll(
-    "SELECT tr.id, tr.title, tr.status, tr.created_at,
+    "SELECT tr.id, tr.title, tr.status, tr.created_at, tr.is_global,
             c.full_name AS client_name,
             e.full_name AS assigned_expert_name
      FROM thinking_requests tr
@@ -81,7 +81,7 @@ $statusClass = static function (string $status): string {
                                         <?= date('M j, Y H:i', strtotime($r['created_at'])) ?></div>
                                 </td>
                                 <td><?= htmlspecialchars($r['client_name']) ?></td>
-                                <td><?= htmlspecialchars($r['preferred_expert_name'] ?? '—') ?></td>
+                                <td><?= !empty($r['is_global']) ? 'Global' : htmlspecialchars($r['preferred_expert_name'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars(ucfirst($r['urgency'])) ?></td>
                                 <td><?= htmlspecialchars(($r['currency'] ?? 'USD') . ' ' . number_format((float) $r['agreed_rate'], 2)) ?>
                                 </td>
@@ -237,10 +237,13 @@ $statusClass = static function (string $status): string {
         const select = document.getElementById('admin-request-id');
         if (!select) return;
         select.value = String(requestId);
-        select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        select.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
     }
 
-    document.getElementById('admin-solution-form')?.addEventListener('submit', async function (e) {
+    document.getElementById('admin-solution-form')?.addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
         adminRecorder.appendTo(formData, 'voice_response');

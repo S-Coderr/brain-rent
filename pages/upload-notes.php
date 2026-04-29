@@ -4,6 +4,7 @@ $title = 'Upload Notes';
 require_once __DIR__ . '/../config/auth.php';
 requireLogin();
 require_once __DIR__ . '/../includes/upload_media_helpers.php';
+require_once __DIR__ . '/../includes/media_blob_helpers.php';
 
 $db = Database::getInstance();
 $user = currentUser();
@@ -37,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       if (!in_array($ext, $allowedExts)) {
         $error = 'Invalid file type. Allowed: PDF, DOC, DOCX, TXT, PPT, PPTX.';
-      } elseif ($file['size'] > 25 * 1024 * 1024) { // 25MB limit
-        $error = 'File too large. Maximum size is 25MB.';
+      } elseif ($file['size'] > 60 * 1024 * 1024) { // 60MB limit
+        $error = 'File too large. Maximum size is 60MB.';
       } else {
         $uploadRoot = __DIR__ . '/../uploads';
         $notesDir = $uploadRoot . '/notes';
@@ -58,18 +59,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
             $filePath = APP_URL . '/uploads/notes/' . $filename;
-            $fileSize = $file['size'];
+            $fileSize = (int) $file['size'];
             $thumbnail = brAutoCaptureThumbnail($uploadPath, $ext, $thumbDir);
 
-            $db->execute(
-              "INSERT INTO notes (title, subject, category, description, file_path, file_size, file_type, thumbnail, uploaded_by)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [$noteTitle, $subject, $category, $description, $filePath, $fileSize, $ext, $thumbnail, $user['id']]
-            );
+            $conn = $db->getConnection();
 
-            $success = 'Notes uploaded successfully!';
-            header('Location: ' . APP_URL . '/pages/notes.php');
-            exit;
+            try {
+              $conn->beginTransaction();
+
+              $stmt = $conn->prepare(
+                "INSERT INTO notes (title, subject, category, description, file_path, file_size, file_type, thumbnail, uploaded_by, is_active)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+              );
+              $stmt->execute([$noteTitle, $subject, $category, $description, $filePath, $fileSize, $ext, $thumbnail, $user['id']]);
+
+              $noteId = (int) $conn->lastInsertId();
+              if ($noteId <= 0) {
+                throw new RuntimeException('Could not create notes record.');
+              }
+
+              $blobSaved = brSaveEntityFileBlob(
+                $db,
+                'notes',
+                $noteId,
+                $uploadPath,
+                (string) ($file['name'] ?? $filename),
+                $filename,
+                $ext,
+                null,
+                $fileSize,
+                'hybrid',
+                $filePath
+              );
+
+              if (!$blobSaved) {
+                throw new RuntimeException('Could not save file in uploaded_files.');
+              }
+
+              $conn->commit();
+
+              $success = 'Notes uploaded successfully!';
+              header('Location: ' . APP_URL . '/pages/notes.php');
+              exit;
+            } catch (Throwable $e) {
+              if ($conn->inTransaction()) {
+                $conn->rollBack();
+              }
+              error_log('Notes upload failed: ' . $e->getMessage());
+
+              if (is_file($uploadPath)) {
+                @unlink($uploadPath);
+              }
+              if (!empty($thumbnail)) {
+                $thumbLocal = resolveUploadedFilePath($thumbnail);
+                if (is_file($thumbLocal)) {
+                  @unlink($thumbLocal);
+                }
+              }
+
+              $error = 'Could not save the notes. Please run database/setup_database.php and try again.';
+            }
           } else {
             $error = 'Failed to upload file. Please check folder permissions and try again.';
           }
@@ -155,7 +204,7 @@ require_once __DIR__ . '/../includes/header.php';
       </div>
 
       <div class="mb-4">
-        <label class="br-form-label">Notes File * (PDF, DOC, DOCX, TXT, PPT, PPTX - Max 25MB)</label>
+        <label class="br-form-label">Notes File * (PDF, DOC, DOCX, TXT, PPT, PPTX - Max 60MB)</label>
         <input type="file" name="notes" class="br-form-control" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx" required>
         <small class="text-muted">Thumbnail is auto-generated from the uploaded file.</small>
       </div>
@@ -170,13 +219,13 @@ require_once __DIR__ . '/../includes/header.php';
 </main>
 
 <script>
-  (function () {
+  (function() {
     var form = document.getElementById('notes-upload-form');
     var button = document.getElementById('notes-upload-submit');
 
     if (!form || !button) return;
 
-    form.addEventListener('submit', function () {
+    form.addEventListener('submit', function() {
       button.disabled = true;
       button.textContent = 'Uploading...';
     });

@@ -30,9 +30,9 @@ if ($isAdmin) {
     // Admin can inspect every problem.
     $requestWhere .= "";
 } elseif ($isExpert) {
-    // Verified experts can inspect open/shared requests and their own assigned requests.
-    $requestWhere .= " AND (tr.status = 'submitted' OR tr.expert_id = ? OR tr.client_id = ?)";
-    $requestParams[] = $userId;
+    // Verified experts can inspect global open requests and their own assigned requests.
+    $requestWhere .= " AND ((tr.is_global = 1 AND tr.status = 'submitted') OR tr.expert_id = ? OR tr.client_id = ?)";
+    $requestParams[] = $userId; 
     $requestParams[] = $userId;
 } else {
     // Clients can only inspect their own problems.
@@ -43,8 +43,8 @@ if ($isAdmin) {
 $request = $db->fetchOne(
     "SELECT tr.*, u.full_name AS expert_name, u.profile_photo AS expert_photo,
             ec.name AS category_name
-     FROM thinking_requests tr
-     INNER JOIN users u ON tr.expert_id = u.id
+    FROM thinking_requests tr
+    LEFT JOIN users u ON tr.expert_id = u.id
      LEFT JOIN expertise_categories ec ON tr.category_id = ec.id
      WHERE {$requestWhere}",
     $requestParams
@@ -96,8 +96,18 @@ if ($response) {
     $response['voice_url'] = filePathToUrl($response['voice_response_path'] ?? null);
 }
 
+// Fetch attachments
+$attachments = $db->fetchAll(
+    "SELECT * FROM thinking_request_attachments WHERE request_id = ?",
+    [$requestId]
+);
+foreach ($attachments as &$att) {
+    $att['url'] = filePathToUrl($att['file_path']);
+}
+
 jsonResponse([
     'success' => true,
     'request' => $request,
+    'attachments' => $attachments,
     'response' => $response,
 ]);

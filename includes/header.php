@@ -48,6 +48,28 @@ $bodyClass = (strpos($uri, '/admin/') !== false) ? 'admin-page' : '';
 
       <div class="collapse navbar-collapse" id="mainNav">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <?php if ($user): ?>
+            <?php if ($user['user_type'] === 'admin'): ?>
+              <li class="nav-item">
+                <a class="nav-link" href="<?= APP_URL ?>/admin/index.php">
+                  <i class="bi bi-shield-lock me-1"></i>Admin Portal
+                </a>
+              </li>
+            <?php else: ?>
+              <li class="nav-item">
+                <a class="nav-link" href="<?= APP_URL ?>/pages/dashboard-client.php">
+                  <i class="bi bi-grid me-1"></i>Dashboard
+                </a>
+              </li>
+              <?php if (in_array($user['user_type'], ['expert', 'both']) && isExpertVerified($user['id'])): ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="<?= APP_URL ?>/pages/dashboard-expert.php">
+                    <i class="bi bi-brain me-1"></i>Expert Panel
+                  </a>
+                </li>
+              <?php endif; ?>
+            <?php endif; ?>
+          <?php endif; ?>
           <li class="nav-item">
             <a class="nav-link" href="<?= APP_URL ?>/pages/libraries.php">
               <i class="bi bi-book me-1"></i>Library
@@ -110,29 +132,30 @@ $bodyClass = (strpos($uri, '/admin/') !== false) ? 'admin-page' : '';
                 <li>
                   <hr class="dropdown-divider">
                 </li>
-                <li>
-                  <a class="dropdown-item" href="<?= APP_URL ?>/pages/dashboard-client.php">
-                    <i class="bi bi-grid me-2"></i>Client Dashboard
-                  </a>
-                </li>
-                <?php if (in_array($user['user_type'], ['expert', 'both']) && isExpertVerified($user['id'])): ?>
-                  <li>
-                    <a class="dropdown-item" href="<?= APP_URL ?>/pages/dashboard-expert.php">
-                      <i class="bi bi-brain me-2"></i>Expert Dashboard
-                    </a>
-                  </li>
-                <?php endif; ?>
-                <li>
-                  <a class="dropdown-item" href="<?= APP_URL ?>/pages/profile.php">
-                    <i class="bi bi-person me-2"></i>My Profile
-                  </a>
-                </li>
                 <?php if ($user['user_type'] === 'admin'): ?>
                   <li>
                     <a class="dropdown-item" href="<?= APP_URL ?>/admin/index.php">
                       <i class="bi bi-shield-lock me-2"></i>Admin Portal
                     </a>
                   </li>
+                <?php else: ?>
+                  <li>
+                    <a class="dropdown-item" href="<?= APP_URL ?>/pages/profile.php">
+                      <i class="bi bi-person me-2"></i>My Profile
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="<?= APP_URL ?>/pages/dashboard-client.php">
+                      <i class="bi bi-grid me-2"></i>Client Dashboard
+                    </a>
+                  </li>
+                  <?php if (in_array($user['user_type'], ['expert', 'both']) && isExpertVerified($user['id'])): ?>
+                    <li>
+                      <a class="dropdown-item" href="<?= APP_URL ?>/pages/dashboard-expert.php">
+                        <i class="bi bi-brain me-2"></i>Expert Dashboard
+                      </a>
+                    </li>
+                  <?php endif; ?>
                 <?php endif; ?>
                 <li>
                   <hr class="dropdown-divider">

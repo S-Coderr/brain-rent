@@ -16,7 +16,7 @@ if (file_exists(__DIR__ . '/db.local.php')) {
 defined('DB_SERVER') || define('DB_SERVER', 'localhost');       // MySQL host
 defined('DB_NAME') || define('DB_NAME', 'brain_rent');
 defined('DB_USER') || define('DB_USER', 'root');            // MySQL user (change if needed)
-defined('DB_PASSWORD') || define('DB_PASSWORD', '1234');                // MySQL password (change if needed)
+defined('DB_PASSWORD') || define('DB_PASSWORD', 'P@tn@1234');                // MySQL password (change if needed)
 defined('DB_PORT') || define('DB_PORT', 3306);
 
 define('PLATFORM_FEE_PERCENT', 15);       // 15% commission
@@ -236,7 +236,5 @@ class Database
     }
 
     // Prevent cloning
-    private function __clone()
-    {
-    }
+    private function __clone() {}
 }

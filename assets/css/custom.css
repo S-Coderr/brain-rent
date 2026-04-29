@@ -5,40 +5,40 @@
 
 /* ---- Google Fonts ---- */
 :root {
-  --br-gold: #f3b75e;
-  --br-gold2: #ffe2b5;
-  --br-gold-dim: rgba(243, 183, 94, 0.2);
-  --br-violet: #2f7eea;
-  --br-violet-dim: rgba(47, 126, 234, 0.14);
-  --br-teal: #18b7a2;
-  --br-teal-dim: rgba(24, 183, 162, 0.14);
-  --br-dark: #f7f9fd;
+  --br-gold: #E8743B; /* Primary Orange */
+  --br-gold2: #F2A681;
+  --br-gold-dim: rgba(232, 116, 59, 0.15);
+  --br-violet: #62A4AD; /* Muted teal/blue complementary */
+  --br-violet-dim: rgba(98, 164, 173, 0.15);
+  --br-teal: #78B388; /* Soft green */
+  --br-teal-dim: rgba(120, 179, 136, 0.15);
+  --br-dark: #fffdfb; /* Cream background */
   --br-dark2: #ffffff;
-  --br-dark3: #eef3f8;
+  --br-dark3: #fef5f0; /* Very soft peach */
   --br-card: #ffffff;
-  --br-card2: #f6f8fc;
-  --br-border: rgba(12, 18, 28, 0.08);
-  --br-border2: rgba(12, 18, 28, 0.14);
-  --br-text: #121821;
-  --br-text2: #364152;
-  --br-text3: #5b6673;
-  --br-bg-base: #f7f9fd;
-  --br-bg-2: #f1f5ff;
-  --br-bg-3: #f7fbf5;
-  --br-hue-a: 32;
-  --br-hue-b: 210;
-  --br-hue-c: 150;
+  --br-card2: #fcf8f6;
+  --br-border: rgba(232, 116, 59, 0.15);
+  --br-border2: rgba(232, 116, 59, 0.25);
+  --br-text: #2c211c;
+  --br-text2: #594c45;
+  --br-text3: #8a7a72;
+  --br-bg-base: #fffdfb;
+  --br-bg-2: #fef5f0;
+  --br-bg-3: #fdfaf7;
+  --br-hue-a: 20;
+  --br-hue-b: 190;
+  --br-hue-c: 120;
   --br-shift-x: 0%;
   --br-shift-y: 0%;
-  --br-spot-a: hsla(var(--br-hue-a), 85%, 92%, 0.9);
-  --br-spot-b: hsla(var(--br-hue-b), 80%, 92%, 0.85);
-  --br-spot-c: hsla(var(--br-hue-c), 75%, 92%, 0.85);
-  --br-spot-d: hsla(calc(var(--br-hue-a) + 35), 85%, 92%, 0.8);
-  --bs-primary: #2f7eea;
-  --bs-success: #31b48b;
-  --bs-warning: #f3b75e;
-  --bs-danger: #f06b6b;
-  --bs-info: #2fb0d6;
+  --br-spot-a: hsla(var(--br-hue-a), 85%, 92%, 0.7);
+  --br-spot-b: hsla(var(--br-hue-b), 80%, 95%, 0.6);
+  --br-spot-c: hsla(var(--br-hue-c), 75%, 95%, 0.5);
+  --br-spot-d: hsla(calc(var(--br-hue-a) + 15), 85%, 92%, 0.6);
+  --bs-primary: #E8743B;
+  --bs-success: #78B388;
+  --bs-warning: #F2A681;
+  --bs-danger: #e05e5e;
+  --bs-info: #62A4AD;
   --bs-body-bg: var(--br-bg-base);
   --bs-body-color: var(--br-text);
   --bs-font-sans-serif: "DM Sans", system-ui, sans-serif;
@@ -837,6 +837,11 @@ select.br-form-control option {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
+.br-dash-footer {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
 .br-metric-card {
   background: var(--br-card);
   border: 1px solid var(--br-border);
@@ -1439,4 +1444,83 @@ body.admin-page .admin-table .text-subtle {
 }
 main {
   animation: pagein 0.3s ease;
+}
+
+/* --- 3D Floating Animations --- */
+@keyframes floatUp {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-15px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes floatSlow {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(2deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+.br-float {
+  animation: floatUp 4s ease-in-out infinite;
+}
+
+.br-float-slow {
+  animation: floatSlow 6s ease-in-out infinite;
+}
+
+.br-3d-image {
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(232, 116, 59, 0.15);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.br-3d-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 30px 60px rgba(232, 116, 59, 0.25);
+}
+
+/* Glassmorphism & Hover Glow */
+.br-glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+}
+
+.br-hover-glow {
+  transition: all 0.3s ease;
+}
+
+.br-hover-glow:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0 25px var(--br-gold-dim), 0 5px 15px rgba(0,0,0,0.05);
+}
+
+/* Scroll Reveal Initial States */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.reveal-up.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Live Pulse Animation */
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(232, 116, 59, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(232, 116, 59, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(232, 116, 59, 0); }
+}
+
+.live-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background-color: var(--br-gold);
+  border-radius: 50%;
+  animation: pulseGlow 2s infinite;
+  margin-right: 8px;
 }

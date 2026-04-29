@@ -32,6 +32,8 @@ class ExpertSearch
         $viewerType = $viewer['user_type'] ?? 'guest';
         $mustSeeApprovedOnly = !in_array($viewerType, ['admin', 'expert', 'both'], true);
         ensurePendingExpertProfilesTable($this->db);
+        ensureUserProfileColumns($this->db);
+        ensureExpertProfilesColumns($this->db);
 
         $where = [
             "u.is_active = 1",

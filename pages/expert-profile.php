@@ -10,6 +10,8 @@ if (!$expertUserId) {
 }
 
 $db = Database::getInstance();
+ensureUserProfileColumns($db);
+ensureExpertProfilesColumns($db);
 
 $expert = $db->fetchOne(
   "SELECT ep.*, ep.current_role_name AS `current_role`, u.full_name, u.profile_photo, u.country
@@ -159,7 +161,7 @@ require_once __DIR__ . '/../includes/header.php';
                   <div>
                     <div class="fw-medium small"><?= htmlspecialchars($r['reviewer_name']) ?></div>
                     <div><?php for ($s = 1; $s <= 5; $s++)
-                      echo $s <= $r['rating'] ? '⭐' : '☆'; ?></div>
+                            echo $s <= $r['rating'] ? '⭐' : '☆'; ?></div>
                   </div>
                   <div class="text-subtle small"><?= date('M j, Y', strtotime($r['created_at'])) ?></div>
                 </div>
@@ -191,9 +193,30 @@ require_once __DIR__ . '/../includes/header.php';
             class="btn br-btn-gold w-100 py-3 mb-2 fw-semibold">
             Submit Your Problem <i class="bi bi-arrow-right ms-1"></i>
           </a>
-          <button class="btn br-btn-ghost w-100 py-2">
+          <button id="btn-ask-question" class="btn br-btn-ghost w-100 py-2">
             <i class="bi bi-chat-dots me-2"></i>Ask a Quick Question
           </button>
+          
+          <!-- Chat Widget Inline -->
+          <div id="chat-widget" class="br-chat-widget shadow-lg mt-3" style="display:none; background:var(--br-card); border-radius:15px; border:1px solid var(--br-border); overflow:hidden; flex-direction:column; height:350px;">
+            <!-- Header -->
+            <div class="p-3 d-flex justify-content-between align-items-center" style="background:var(--br-gold); color:#fff;">
+              <div class="fw-semibold" style="font-size:0.9rem;">
+                <i class="bi bi-chat-dots-fill me-2"></i><?= htmlspecialchars($expert['full_name']) ?>
+              </div>
+              <button id="btn-close-chat" class="btn btn-sm text-white" style="background:none; border:none; padding:0; line-height:1;"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <!-- Messages Area -->
+            <div id="chat-messages" class="p-3" style="flex:1; overflow-y:auto; background:var(--br-bg-base); display:flex; flex-direction:column; gap:10px; font-size:0.85rem">
+              <!-- Messages will be injected here -->
+            </div>
+            <!-- Input Area -->
+            <div class="p-2 border-top d-flex gap-2" style="background:var(--br-card);">
+              <input type="text" id="chat-input" class="form-control br-form-control" placeholder="Type a message..." style="flex:1; font-size:0.85rem">
+              <button id="btn-send-chat" class="btn br-btn-gold" style="border-radius:10px;"><i class="bi bi-send-fill"></i></button>
+            </div>
+          </div>
+
           <div class="text-center text-subtle mt-3" style="font-size:.72rem">
             <i class="bi bi-lock-fill me-1"></i>15% platform fee included · Secured by escrow
           </div>
@@ -202,4 +225,105 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
   </div>
 </main>
+
+<script>
+  const expertId = <?= (int) $expertUserId ?>;
+  const btnAsk = document.getElementById('btn-ask-question');
+  const chatWidget = document.getElementById('chat-widget');
+  const btnCloseChat = document.getElementById('btn-close-chat');
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input');
+  const btnSendChat = document.getElementById('btn-send-chat');
+  let chatInterval = null;
+
+  btnAsk.addEventListener('click', () => {
+    chatWidget.style.display = chatWidget.style.display === 'none' ? 'flex' : 'none';
+    if (chatWidget.style.display === 'flex') {
+      fetchMessages();
+      if (!chatInterval) chatInterval = setInterval(fetchMessages, 3000);
+    } else {
+      if (chatInterval) {
+        clearInterval(chatInterval);
+        chatInterval = null;
+      }
+    }
+  });
+
+  btnCloseChat.addEventListener('click', () => {
+    chatWidget.style.display = 'none';
+    if (chatInterval) {
+      clearInterval(chatInterval);
+      chatInterval = null;
+    }
+  });
+
+  async function fetchMessages() {
+    try {
+      const res = await fetch(`<?= APP_URL ?>/api/chat.php?action=fetch&other_user_id=${expertId}`);
+      const data = await res.json();
+      if (data.success) {
+        chatMessages.innerHTML = '';
+        data.messages.forEach(msg => {
+          const isMine = msg.sender_id === data.current_user_id;
+          const div = document.createElement('div');
+          div.style.padding = '8px 12px';
+          div.style.borderRadius = '15px';
+          div.style.maxWidth = '80%';
+          div.style.fontSize = '0.9rem';
+          div.textContent = msg.message_text;
+
+          if (isMine) {
+            div.style.background = 'var(--br-gold)';
+            div.style.color = '#fff';
+            div.style.alignSelf = 'flex-end';
+            div.style.borderBottomRightRadius = '2px';
+          } else {
+            div.style.background = 'var(--br-dark3)';
+            div.style.color = 'var(--br-text)';
+            div.style.border = '1px solid var(--br-border)';
+            div.style.alignSelf = 'flex-start';
+            div.style.borderBottomLeftRadius = '2px';
+          }
+          chatMessages.appendChild(div);
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    } catch(e) { console.error('Chat error', e); }
+  }
+
+  async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatInput.value = '';
+    btnSendChat.disabled = true;
+
+    const fd = new URLSearchParams();
+    fd.append('action', 'send');
+    fd.append('receiver_id', expertId);
+    fd.append('message_text', text);
+
+    try {
+      const res = await fetch(`<?= APP_URL ?>/api/chat.php`, {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchMessages();
+      } else if (data.error === 'Not authenticated') {
+        alert('Please login to ask a question');
+        window.location.href = '<?= APP_URL ?>/pages/auth.php';
+      }
+    } catch(e) { console.error(e); }
+    
+    btnSendChat.disabled = false;
+  }
+
+  btnSendChat.addEventListener('click', sendMessage);
+  chatInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+  });
+</script>
+
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -14,9 +14,16 @@ $canSeePendingBadge = in_array(($user['user_type'] ?? ''), ['admin', 'expert', '
   <div class="container">
 
     <!-- Page Header -->
-    <div class="mb-4">
-      <h1 class="br-section-title fs-2 mb-1">Browse Experts</h1>
-      <p class="text-muted small">Find the right thinker for your problem</p>
+    <div class="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h1 class="br-section-title fs-2 mb-1">Browse Experts</h1>
+        <p class="text-muted small">Find the right thinker for your problem</p>
+      </div>
+      <?php if ($user): ?>
+        <a href="<?= APP_URL ?>/pages/submit-problem.php" class="btn br-btn-gold">
+          Post to Any Expert
+        </a>
+      <?php endif; ?>
     </div>
 
     <!-- Search Bar -->
@@ -145,7 +152,10 @@ $canSeePendingBadge = in_array(($user['user_type'] ?? ''), ['admin', 'expert', '
     try {
       const res = await fetch(APP_URL + '/api/search_experts.php?' + params.toString());
       const data = await res.json();
-      if (!data.success) { renderError(data.error); return; }
+      if (!data.success) {
+        renderError(data.error);
+        return;
+      }
 
       document.getElementById('results-count').textContent = `${data.total} experts found`;
       renderExperts(data.experts);
@@ -169,16 +179,16 @@ $canSeePendingBadge = in_array(($user['user_type'] ?? ''), ['admin', 'expert', '
     grid.innerHTML = experts.map((e, i) => {
       const isVerified = Number(e.is_verified) === 1;
       const isAvailable = Number(e.is_available) === 1;
-      const cardHref = (!isVerified && CAN_SEE_PENDING_BADGE)
-        ? (VIEWER_ROLE === 'admin'
-          ? `${APP_URL}/admin/expert-review.php?id=${e.user_id}`
-          : 'javascript:void(0)')
-        : `${APP_URL}/pages/expert-profile.php?id=${e.user_id}`;
-      const statusBadge = isVerified
-        ? '<div class="position-absolute top-0 end-0 m-3"><span class="br-badge br-badge-teal" style="font-size:.68rem">✓ Verified</span></div>'
-        : (CAN_SEE_PENDING_BADGE
-          ? '<div class="position-absolute top-0 end-0 m-3"><span class="br-badge br-badge-gold" style="font-size:.68rem">Pending approval</span></div>'
-          : '');
+      const cardHref = (!isVerified && CAN_SEE_PENDING_BADGE) ?
+        (VIEWER_ROLE === 'admin' ?
+          `${APP_URL}/admin/expert-review.php?id=${e.user_id}` :
+          'javascript:void(0)') :
+        `${APP_URL}/pages/expert-profile.php?id=${e.user_id}`;
+      const statusBadge = isVerified ?
+        '<div class="position-absolute top-0 end-0 m-3"><span class="br-badge br-badge-teal" style="font-size:.68rem">✓ Verified</span></div>' :
+        (CAN_SEE_PENDING_BADGE ?
+          '<div class="position-absolute top-0 end-0 m-3"><span class="br-badge br-badge-gold" style="font-size:.68rem">Pending approval</span></div>' :
+          '');
 
       return `
     <div class="col-12 col-sm-6 col-xl-4">
@@ -215,7 +225,10 @@ $canSeePendingBadge = in_array(($user['user_type'] ?? ''), ['admin', 'expert', '
 
   function renderPagination(page, totalPages) {
     const el = document.getElementById('pagination');
-    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    if (totalPages <= 1) {
+      el.innerHTML = '';
+      return;
+    }
     let html = '';
     if (page > 1) html += `<button class="btn br-btn-ghost btn-sm" onclick="loadExperts(${page - 1})">← Prev</button>`;
     for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) {
@@ -237,12 +250,16 @@ $canSeePendingBadge = in_array(($user['user_type'] ?? ''), ['admin', 'expert', '
   }
 
   let searchTimer;
+
   function liveSearch() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => loadExperts(1), 350);
   }
 
-  function applyFilters() { loadExperts(1); }
+  function applyFilters() {
+    loadExperts(1);
+  }
+
   function resetFilters() {
     document.getElementById('filter-form').reset();
     document.getElementById('search-input').value = '';

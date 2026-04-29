@@ -7,6 +7,8 @@ $title = 'Admin - Users';
 require_once __DIR__ . '/../includes/header.php';
 
 $db = Database::getInstance();
+ensureUserProfileColumns($db);
+ensureExpertProfilesColumns($db);
 $users = $db->fetchAll(
     "SELECT u.id, u.full_name, u.email, u.user_type, u.is_active, u.created_at,
             u.phone, u.country, u.profile_photo, u.bio,

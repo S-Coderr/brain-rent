@@ -94,7 +94,7 @@ function ensureTemporaryPaymentsTable(Database $db): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             request_id INT NOT NULL,
             client_id INT NOT NULL,
-            preferred_expert_id INT NOT NULL,
+            preferred_expert_id INT NULL,
             gateway ENUM('stripe','razorpay') NOT NULL DEFAULT 'razorpay',
             amount DECIMAL(10,2) NOT NULL,
             currency VARCHAR(3) DEFAULT 'USD',
@@ -104,12 +104,152 @@ function ensureTemporaryPaymentsTable(Database $db): void
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_temp_pay_request FOREIGN KEY (request_id) REFERENCES thinking_requests(id) ON DELETE CASCADE,
             CONSTRAINT fk_temp_pay_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
-            CONSTRAINT fk_temp_pay_expert FOREIGN KEY (preferred_expert_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_temp_pay_expert FOREIGN KEY (preferred_expert_id) REFERENCES users(id) ON DELETE SET NULL,
             INDEX idx_temp_pay_request (request_id),
             INDEX idx_temp_pay_client (client_id),
             INDEX idx_temp_pay_status (status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+
+    $ensured = true;
+}
+
+function getSecurityQuestionOptions(): array
+{
+    return [
+        'first_pet' => 'What was the name of your first pet?',
+        'first_school' => 'What is the name of your first school?',
+        'favorite_teacher' => 'Who was your favorite teacher?',
+        'birth_city' => 'In which city were you born?',
+        'childhood_nickname' => 'What was your childhood nickname?',
+    ];
+}
+
+function normalizeSecurityAnswer(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    $value = preg_replace('/\s+/', ' ', $value);
+    return strtolower($value ?? '');
+}
+
+function ensureSecurityQuestionColumns(Database $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $columns = $db->fetchAll("SHOW COLUMNS FROM users");
+    $existing = [];
+    foreach ($columns as $col) {
+        $existing[strtolower($col['Field'])] = true;
+    }
+
+    $conn = $db->getConnection();
+    if (!isset($existing['security_question'])) {
+        $conn->exec("ALTER TABLE users ADD COLUMN security_question VARCHAR(255) NULL");
+    }
+    if (!isset($existing['security_answer_hash'])) {
+        $conn->exec("ALTER TABLE users ADD COLUMN security_answer_hash VARCHAR(255) NULL");
+    }
+
+    $ensured = true;
+}
+
+function ensureUserProfileColumns(Database $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $columns = $db->fetchAll("SHOW COLUMNS FROM users");
+    $existing = [];
+    foreach ($columns as $col) {
+        $existing[strtolower($col['Field'])] = true;
+    }
+
+    $desired = [
+        'phone' => "VARCHAR(20) NULL",
+        'user_type' => "ENUM('client','expert','both','admin') NOT NULL DEFAULT 'client'",
+        'profile_photo' => "VARCHAR(500) NULL",
+        'bio' => "TEXT NULL",
+        'country' => "VARCHAR(100) NULL",
+        'timezone' => "VARCHAR(50) NULL",
+        'is_email_verified' => "TINYINT(1) DEFAULT 0",
+        'is_active' => "TINYINT(1) DEFAULT 1",
+        'created_at' => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        'updated_at' => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+    ];
+
+    $conn = $db->getConnection();
+    foreach ($desired as $name => $definition) {
+        if (isset($existing[strtolower($name)])) {
+            continue;
+        }
+        $conn->exec("ALTER TABLE users ADD COLUMN {$name} {$definition}");
+    }
+
+    $ensured = true;
+}
+
+function ensureExpertProfilesColumns(Database $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $exists = $db->fetchOne(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+        [DB_NAME, 'expert_profiles']
+    );
+    if (!$exists) {
+        return;
+    }
+
+    $columns = $db->fetchAll("SHOW COLUMNS FROM expert_profiles");
+    $existing = [];
+    foreach ($columns as $col) {
+        $existing[strtolower($col['Field'])] = true;
+    }
+
+    $desired = [
+        'headline' => "VARCHAR(255) NULL",
+        'qualification' => "VARCHAR(255) NULL",
+        'domain' => "VARCHAR(150) NULL",
+        'skills' => "TEXT NULL",
+        'expertise_areas' => "TEXT NULL",
+        'experience_years' => "INT NULL",
+        'current_role_name' => "VARCHAR(200) NULL",
+        'company' => "VARCHAR(200) NULL",
+        'linkedin_url' => "VARCHAR(500) NULL",
+        'portfolio_url' => "VARCHAR(500) NULL",
+        'rate_per_session' => "DECIMAL(10,2) NOT NULL DEFAULT 0",
+        'currency' => "VARCHAR(3) DEFAULT 'USD'",
+        'session_duration_minutes' => "INT DEFAULT 10",
+        'max_response_hours' => "INT DEFAULT 48",
+        'is_available' => "TINYINT(1) DEFAULT 1",
+        'max_active_requests' => "INT DEFAULT 5",
+        'total_sessions' => "INT DEFAULT 0",
+        'total_earnings' => "DECIMAL(12,2) DEFAULT 0",
+        'average_rating' => "DECIMAL(3,2) DEFAULT 0",
+        'total_reviews' => "INT DEFAULT 0",
+        'is_verified' => "TINYINT(1) DEFAULT 0",
+        'verification_docs' => "VARCHAR(500) NULL",
+        'created_at' => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    ];
+
+    $conn = $db->getConnection();
+    foreach ($desired as $name => $definition) {
+        if (isset($existing[strtolower($name)])) {
+            continue;
+        }
+        $conn->exec("ALTER TABLE expert_profiles ADD COLUMN {$name} {$definition}");
+    }
 
     $ensured = true;
 }
@@ -160,6 +300,7 @@ function requireAdmin(): void
 function registerUser(array $data): array
 {
     $db = Database::getInstance();
+    ensureSecurityQuestionColumns($db);
     $userType = strtolower(trim($data['user_type'] ?? 'client'));
     if (!in_array($userType, ['client', 'expert', 'both'], true)) {
         $userType = 'client';
@@ -173,6 +314,19 @@ function registerUser(array $data): array
     $phone = $phone === '' ? null : $phone;
     $country = trim((string) ($data['country'] ?? ''));
     $country = $country === '' ? null : $country;
+
+    $securityQuestions = getSecurityQuestionOptions();
+    $securityQuestion = trim((string) ($data['security_question'] ?? ''));
+    $securityAnswerRaw = (string) ($data['security_answer'] ?? '');
+    $securityAnswer = normalizeSecurityAnswer($securityAnswerRaw);
+    if ($securityQuestion === '' || !array_key_exists($securityQuestion, $securityQuestions)) {
+        return ['success' => false, 'error' => 'Please select a valid security question'];
+    }
+    if ($securityAnswer === '') {
+        return ['success' => false, 'error' => 'Please provide a security answer'];
+    }
+
+    $securityAnswerHash = password_hash($securityAnswer, PASSWORD_BCRYPT, ['cost' => 12]);
 
     // Check duplicate email
     $existing = $db->fetchOne(
@@ -191,8 +345,8 @@ function registerUser(array $data): array
         $conn->beginTransaction();
 
         $stmt = $conn->prepare(
-            "INSERT INTO users (full_name, email, password_hash, user_type, country, phone)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO users (full_name, email, password_hash, user_type, country, phone, security_question, security_answer_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $stmt->execute([
             htmlspecialchars(trim($data['full_name'] ?? '')),
@@ -201,6 +355,8 @@ function registerUser(array $data): array
             $userType,
             $country,
             $phone,
+            $securityQuestion,
+            $securityAnswerHash,
         ]);
         $id = (int) $conn->lastInsertId();
 
@@ -279,6 +435,17 @@ function registerUser(array $data): array
         }
 
         $conn->commit();
+
+        $adminTitle = $userType === 'expert'
+            ? 'New expert registration'
+            : 'New client registration';
+        $adminMessage = $userType === 'expert'
+            ? 'Expert signup: ' . ($data['full_name'] ?? 'New expert') . ' (' . $email . '). Review pending profile.'
+            : 'Client signup: ' . ($data['full_name'] ?? 'New client') . ' (' . $email . ').';
+        $adminLink = $userType === 'expert'
+            ? APP_URL . '/admin/expert-review.php?id=' . $id
+            : APP_URL . '/admin/users.php';
+        notifyAdmins($db, $userType === 'expert' ? 'admin_expert_registered' : 'admin_client_registered', $adminTitle, $adminMessage, $adminLink);
     } catch (PDOException $e) {
         $conn->rollBack();
         error_log('Registration failed: ' . $e->getMessage());
@@ -286,6 +453,153 @@ function registerUser(array $data): array
     }
 
     return ['success' => true, 'user_id' => $id];
+}
+
+function verifySecurityAnswer(string $email, string $question, string $answer): array
+{
+    $db = Database::getInstance();
+    ensureSecurityQuestionColumns($db);
+
+    $email = strtolower(trim($email));
+    $question = trim($question);
+    $answer = normalizeSecurityAnswer($answer);
+
+    if ($email === '' || $question === '' || $answer === '') {
+        return ['success' => false, 'error' => 'Please complete all fields'];
+    }
+
+    $questions = getSecurityQuestionOptions();
+    if (!array_key_exists($question, $questions)) {
+        return ['success' => false, 'error' => 'Invalid security question'];
+    }
+
+    $row = $db->fetchOne(
+        "SELECT id, security_question, security_answer_hash, is_active FROM users WHERE email = ?",
+        [$email]
+    );
+
+    if (!$row || (int) ($row['is_active'] ?? 0) !== 1) {
+        return ['success' => false, 'error' => 'Account not found'];
+    }
+
+    if (empty($row['security_question']) || empty($row['security_answer_hash'])) {
+        return ['success' => false, 'error' => 'Security question not set for this account'];
+    }
+
+    if ($row['security_question'] !== $question) {
+        return ['success' => false, 'error' => 'Security answer mismatch'];
+    }
+
+    if (!password_verify($answer, $row['security_answer_hash'])) {
+        return ['success' => false, 'error' => 'Security answer mismatch'];
+    }
+
+    return ['success' => true, 'user_id' => (int) $row['id']];
+}
+
+function resetPasswordWithSecurityAnswer(string $email, string $question, string $answer, string $newPassword): array
+{
+    $check = verifySecurityAnswer($email, $question, $answer);
+    if (!$check['success']) {
+        return $check;
+    }
+
+    $hash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+    $db = Database::getInstance();
+    $updated = $db->execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        [$hash, (int) $check['user_id']]
+    );
+
+    if ($updated < 1) {
+        return ['success' => false, 'error' => 'Unable to update password'];
+    }
+
+    return ['success' => true];
+}
+
+function deleteUserAccount(int $userId): array
+{
+    $db = Database::getInstance();
+    ensureUserProfileColumns($db);
+    ensureSecurityQuestionColumns($db);
+    ensurePendingExpertProfilesTable($db);
+    ensureExpertProfilesColumns($db);
+
+    $user = $db->fetchOne(
+        "SELECT id, full_name, email, user_type FROM users WHERE id = ?",
+        [$userId]
+    );
+
+    if (!$user) {
+        return ['success' => false, 'error' => 'Account not found'];
+    }
+
+    $deletedName = 'Deleted Account';
+    $deletedSnapshot = [
+        'full_name' => (string) ($user['full_name'] ?? 'Unknown'),
+        'email' => (string) ($user['email'] ?? ''),
+        'user_type' => (string) ($user['user_type'] ?? 'client'),
+    ];
+    $deletedEmail = 'deleted_' . $userId . '_' . time() . '@brainrent.local';
+    $randomHash = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT, ['cost' => 12]);
+
+    $conn = $db->getConnection();
+
+    try {
+        $conn->beginTransaction();
+
+        $stmt = $conn->prepare(
+            "UPDATE users
+             SET full_name = ?,
+                 email = ?,
+                 phone = NULL,
+                 country = NULL,
+                 timezone = NULL,
+                 profile_photo = NULL,
+                 bio = NULL,
+                 password_hash = ?,
+                 is_email_verified = 0,
+                 is_active = 0,
+                 security_question = NULL,
+                 security_answer_hash = NULL
+             WHERE id = ?"
+        );
+        $stmt->execute([$deletedName, $deletedEmail, $randomHash, $userId]);
+
+        $stmt = $conn->prepare("DELETE FROM pending_expert_profiles WHERE user_id = ?");
+        $stmt->execute([$userId]);
+
+        $stmt = $conn->prepare("DELETE FROM expert_profiles WHERE user_id = ?");
+        $stmt->execute([$userId]);
+
+        $stmt = $conn->prepare(
+            "UPDATE expert_wallet
+             SET bank_account_name = NULL,
+                 bank_account_number = NULL,
+                 bank_ifsc = NULL,
+                 upi_id = NULL
+             WHERE expert_user_id = ?"
+        );
+        $stmt->execute([$userId]);
+
+        $stmt = $conn->prepare("DELETE FROM user_sessions WHERE user_id = ?");
+        $stmt->execute([$userId]);
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollBack();
+        error_log('Delete account failed: ' . $e->getMessage());
+        return ['success' => false, 'error' => 'Unable to delete account right now'];
+    }
+
+    $roleLabel = $deletedSnapshot['user_type'] !== '' ? $deletedSnapshot['user_type'] : 'user';
+    $adminTitle = 'User account deleted';
+    $adminMessage = 'Deleted ' . $roleLabel . ': ' . $deletedSnapshot['full_name'] .
+        ($deletedSnapshot['email'] ? ' (' . $deletedSnapshot['email'] . ')' : '') . '.';
+    notifyAdmins($db, 'admin_user_deleted', $adminTitle, $adminMessage, APP_URL . '/admin/users.php');
+
+    return ['success' => true];
 }
 
 // ---- Login ----
@@ -344,6 +658,37 @@ function verifyCsrf(string $token): bool
 }
 
 // ---- JSON response helper ----
+
+function insertNotification(Database $db, int $userId, string $type, string $title, string $message, ?string $link = null): void
+{
+    if ($userId <= 0) {
+        return;
+    }
+
+    $db->execute(
+        "INSERT INTO notifications (user_id, type, title, message, link)
+         VALUES (?, ?, ?, ?, ?)",
+        [
+            $userId,
+            substr($type, 0, 50),
+            substr($title, 0, 255),
+            substr($message, 0, 2000),
+            $link ? substr($link, 0, 500) : null,
+        ]
+    );
+}
+
+function notifyAdmins(Database $db, string $type, string $title, string $message, ?string $link = null): void
+{
+    $admins = $db->fetchAll("SELECT id FROM users WHERE user_type = 'admin' AND is_active = 1");
+    if (!$admins) {
+        return;
+    }
+
+    foreach ($admins as $admin) {
+        insertNotification($db, (int) $admin['id'], $type, $title, $message, $link);
+    }
+}
 
 function jsonResponse(array $data, int $status = 200): void
 {

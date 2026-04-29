@@ -1,0 +1,3 @@
+# Prevent direct web access to all files inside uploads
+# Media should only be accessed through the PHP endpoints (like api/serve_media.php)
+Require all denied

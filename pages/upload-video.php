@@ -4,6 +4,7 @@ $title = 'Upload Video';
 require_once __DIR__ . '/../config/auth.php';
 requireLogin();
 require_once __DIR__ . '/../includes/upload_media_helpers.php';
+require_once __DIR__ . '/../includes/media_blob_helpers.php';
 
 $db = Database::getInstance();
 $user = currentUser();
@@ -65,17 +66,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
 
           $filePath = APP_URL . '/uploads/videos/' . $filename;
-          $fileSize = $file['size'];
+          $fileSize = (int) $file['size'];
 
-          $db->execute(
-            "INSERT INTO problem_solving_videos (title, problem_type, difficulty, description, video_path, video_size, thumbnail, uploaded_by)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [$videoTitle, $problemType, $difficulty, $description, $filePath, $fileSize, $thumbnail, $user['id']]
-          );
+          $conn = $db->getConnection();
 
-          $success = 'Video uploaded successfully!';
-          header('Location: ' . APP_URL . '/pages/problem-solving.php');
-          exit;
+          try {
+            $conn->beginTransaction();
+
+            $stmt = $conn->prepare(
+              "INSERT INTO problem_solving_videos (title, problem_type, difficulty, description, video_path, video_size, thumbnail, uploaded_by, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)"
+            );
+            $stmt->execute([$videoTitle, $problemType, $difficulty, $description, $filePath, $fileSize, $thumbnail, $user['id']]);
+
+            $videoId = (int) $conn->lastInsertId();
+            if ($videoId <= 0) {
+              throw new RuntimeException('Could not create video record.');
+            }
+
+            $blobSaved = brSaveEntityFileBlob(
+              $db,
+              'problem_solving_videos',
+              $videoId,
+              $uploadPath,
+              (string) ($file['name'] ?? $filename),
+              $filename,
+              $ext,
+              null,
+              $fileSize,
+              'hybrid',
+              $filePath
+            );
+
+            if (!$blobSaved) {
+              throw new RuntimeException('Could not save file in uploaded_files.');
+            }
+
+            $conn->commit();
+
+            $success = 'Video uploaded successfully!';
+            header('Location: ' . APP_URL . '/pages/problem-solving.php');
+            exit;
+          } catch (Throwable $e) {
+            if ($conn->inTransaction()) {
+              $conn->rollBack();
+            }
+            error_log('Video upload failed: ' . $e->getMessage());
+
+            if (is_file($uploadPath)) {
+              @unlink($uploadPath);
+            }
+            if (!empty($thumbnail)) {
+              $thumbLocal = resolveUploadedFilePath($thumbnail);
+              if (is_file($thumbLocal)) {
+                @unlink($thumbLocal);
+              }
+            }
+
+            $error = 'Could not save the video. Please run database/setup_database.php and try again.';
+          }
         } else {
           $error = 'Failed to upload file. Please check folder permissions and try again.';
         }

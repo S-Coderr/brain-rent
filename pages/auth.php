@@ -21,10 +21,13 @@ if (isLoggedIn()) {
 
 $loginError = '';
 $registerError = '';
+$forgotError = '';
+$forgotSuccess = '';
+$forgotVerified = false;
 $formType = $_POST['form_type'] ?? '';
 
 $activeTab = $_GET['tab'] ?? 'login';
-if (!in_array($activeTab, ['login', 'signup'])) {
+if (!in_array($activeTab, ['login', 'signup', 'forgot'])) {
     $activeTab = 'login';
 }
 
@@ -32,6 +35,17 @@ $defaultType = strtolower(trim($_POST['user_type'] ?? ((($_GET['type'] ?? '') ==
 if (!in_array($defaultType, ['client', 'expert'], true)) {
     $defaultType = 'client';
 }
+
+$securityQuestions = getSecurityQuestionOptions();
+$registerSecurityQuestion = $formType === 'register'
+    ? trim((string) ($_POST['security_question'] ?? ''))
+    : '';
+$forgotSecurityQuestion = $formType === 'forgot'
+    ? trim((string) ($_POST['security_question'] ?? ''))
+    : '';
+$forgotEmailValue = $formType === 'forgot'
+    ? trim((string) ($_POST['email'] ?? ''))
+    : '';
 
 $normalizeNumberInput = static function ($value): string {
     $value = trim((string) $value);
@@ -84,6 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $phone = trim($_POST['phone'] ?? '');
         $country = trim($_POST['country'] ?? '');
+        $securityQuestion = trim((string) ($_POST['security_question'] ?? ''));
+        $securityAnswer = trim((string) ($_POST['security_answer'] ?? ''));
 
         $expertData = [
             'qualification' => trim($_POST['qualification'] ?? ''),
@@ -111,6 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $registerError = 'Invalid email address';
         } elseif (!in_array($userType, ['client', 'expert'])) {
             $registerError = 'Invalid account type selected';
+        } elseif ($securityQuestion === '' || !array_key_exists($securityQuestion, $securityQuestions)) {
+            $registerError = 'Please select a security question';
+        } elseif ($securityAnswer === '') {
+            $registerError = 'Please provide a security answer';
         } elseif ($userType === 'expert') {
             $rate = (float) $expertData['rate_per_session'];
             if ($expertData['qualification'] === '' || $expertData['domain'] === '' || $expertData['skills'] === '') {
@@ -128,6 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'user_type' => $userType,
                 'phone' => $phone,
                 'country' => $country,
+                'security_question' => $securityQuestion,
+                'security_answer' => $securityAnswer,
                 'expert' => $expertData,
             ]);
 
@@ -142,6 +164,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $registerError = $result['error'] ?? 'Registration failed';
+        }
+    }
+
+    if ($formType === 'forgot') {
+        $activeTab = 'forgot';
+
+        $email = trim((string) ($_POST['email'] ?? ''));
+        $securityQuestion = trim((string) ($_POST['security_question'] ?? ''));
+        $securityAnswer = trim((string) ($_POST['security_answer'] ?? ''));
+        $newPassword = (string) ($_POST['new_password'] ?? '');
+        $confirmPassword = (string) ($_POST['confirm_password'] ?? '');
+
+        if ($email === '' || $securityQuestion === '' || $securityAnswer === '') {
+            $forgotError = 'Please complete email, question, and answer';
+        } else {
+            $check = verifySecurityAnswer($email, $securityQuestion, $securityAnswer);
+            if (empty($check['success'])) {
+                $forgotError = $check['error'] ?? 'Security answer mismatch';
+            } else {
+                $forgotVerified = true;
+
+                if ($newPassword === '' || $confirmPassword === '') {
+                    $forgotError = 'Please set and confirm your new password';
+                } elseif ($newPassword !== $confirmPassword) {
+                    $forgotError = 'Passwords do not match';
+                } elseif (strlen($newPassword) < 6) {
+                    $forgotError = 'Password must be at least 6 characters';
+                } else {
+                    $reset = resetPasswordWithSecurityAnswer($email, $securityQuestion, $securityAnswer, $newPassword);
+                    if (!empty($reset['success'])) {
+                        $forgotSuccess = 'Password updated. You can log in now.';
+                    } else {
+                        $forgotError = $reset['error'] ?? 'Password reset failed';
+                    }
+                }
+            }
         }
     }
 }
@@ -160,186 +218,289 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 
 <body>
-    <main class="d-flex align-items-center justify-content-center py-5" style="min-height:100vh;background:var(--br-dark);">
-        <div class="container">
-            <div class="row justify-content-center">
-                <div class="col-lg-8">
-                    <div class="text-center mb-4">
+    <main class="d-flex align-items-center justify-content-center py-0" style="min-height:100vh;background:var(--br-dark);">
+        <div class="row g-0 w-100" style="min-height:100vh;">
+            <!-- Left Side Branding / Visual -->
+            <div class="col-lg-5 d-none d-lg-flex flex-column justify-content-between p-5" style="background: linear-gradient(135deg, #1e1e2f 0%, #111827 100%); color: white; position: relative; overflow: hidden;">
+                <!-- Decorative background shapes -->
+                <div style="position:absolute;top:-20%;right:-20%;width:60%;height:60%;background:radial-gradient(circle, var(--br-gold-dim) 0%, transparent 60%);border-radius:50%;opacity:0.6"></div>
+                <div style="position:absolute;bottom:-10%;left:-10%;width:50%;height:50%;background:radial-gradient(circle, rgba(47, 126, 234, 0.15) 0%, transparent 60%);border-radius:50%;opacity:0.6"></div>
+
+                <div class="position-relative z-index-1">
+                    <a href="<?= APP_URL ?>/pages/index.php" class="text-decoration-none">
+                        <div class="d-inline-flex align-items-center gap-2 mb-3">
+                            <span class="br-logo-icon bg-white text-dark border-0">BR</span>
+                            <span class="br-brand text-white fs-4">Brain<span class="text-warning">Rent</span></span>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="position-relative z-index-1 mt-auto mb-auto">
+                    <h1 class="display-4 fw-bold mb-4" style="font-family:'Playfair Display',serif; line-height:1.2;">
+                        Solve problems.<br>
+                        Share knowledge.<br>
+                        <span class="text-warning">Earn rewards.</span>
+                    </h1>
+                    <p class="text-white-50 fs-5 mb-5" style="max-width: 400px;">
+                        Join the premier marketplace connecting clients with verified domain experts for rapid, high-quality solutions.
+                    </p>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="d-flex">
+                            <div class="rounded-circle bg-secondary border border-2 border-dark" style="width:40px;height:40px;margin-left:-0px;background-image:url('https://i.pravatar.cc/100?img=1');background-size:cover;"></div>
+                            <div class="rounded-circle bg-secondary border border-2 border-dark" style="width:40px;height:40px;margin-left:-15px;background-image:url('https://i.pravatar.cc/100?img=2');background-size:cover;"></div>
+                            <div class="rounded-circle bg-secondary border border-2 border-dark" style="width:40px;height:40px;margin-left:-15px;background-image:url('https://i.pravatar.cc/100?img=3');background-size:cover;"></div>
+                            <div class="rounded-circle bg-dark border border-2 border-dark d-flex align-items-center justify-content-center text-white small fw-bold" style="width:40px;height:40px;margin-left:-15px;">+5k</div>
+                        </div>
+                        <div class="small text-white-50">Experts already joined</div>
+                    </div>
+                </div>
+
+                <div class="position-relative z-index-1 small text-white-50">
+                    &copy; <?= date('Y') ?> BrainRent Platform. All rights reserved.
+                </div>
+            </div>
+
+            <!-- Right Side Auth Forms -->
+            <div class="col-lg-7 d-flex align-items-center justify-content-center p-4 p-md-5 bg-white">
+                <div class="w-100" style="max-width: 500px;">
+
+                    <!-- Mobile logo (hidden on desktop) -->
+                    <div class="text-center mb-4 d-lg-none">
                         <a href="<?= APP_URL ?>/pages/index.php" class="text-decoration-none">
                             <div class="d-inline-flex align-items-center gap-2 mb-3">
                                 <span class="br-logo-icon">BR</span>
                                 <span class="br-brand">Brain<span class="text-warning">Rent</span></span>
                             </div>
                         </a>
-                        <h2 class="fw-bold mb-2">Account Access</h2>
-                        <p class="text-muted">Login or create your account</p>
                     </div>
 
-                    <div class="br-card p-4 br-auth-card">
-                        <div class="d-flex flex-wrap gap-2 mb-4">
-                            <button type="button" class="btn <?= $activeTab === 'login' ? 'br-btn-gold' : 'br-btn-ghost' ?> btn-sm" data-auth-tab="login">Log In</button>
-                            <button type="button" class="btn <?= $activeTab === 'signup' ? 'br-btn-gold' : 'br-btn-ghost' ?> btn-sm" data-auth-tab="signup">Create Account</button>
+                    <div class="text-center text-lg-start mb-4">
+                        <h2 class="fw-bold mb-2">Welcome Back</h2>
+                        <p class="text-muted">Access your account or create a new one.</p>
+                    </div>
+
+                    <!-- Auth Tabs -->
+                    <div class="d-flex flex-wrap gap-2 mb-4 p-1 rounded-3" style="background: var(--br-dark3);">
+                        <button type="button" class="btn flex-fill <?= $activeTab === 'login' ? 'br-btn-gold' : 'br-btn-ghost border-0' ?> btn-sm py-2 rounded-2" data-auth-tab="login" data-auth-tab-style="pill">Log In</button>
+                        <button type="button" class="btn flex-fill <?= $activeTab === 'signup' ? 'br-btn-gold' : 'br-btn-ghost border-0' ?> btn-sm py-2 rounded-2" data-auth-tab="signup" data-auth-tab-style="pill">Sign Up</button>
+                    </div>
+
+                    <!-- LOGIN PANEL -->
+                    <div id="auth-login" data-auth-panel="login" style="display:<?= $activeTab === 'login' ? 'block' : 'none' ?>;">
+                        <?php if ($loginError): ?>
+                            <div class="alert alert-danger d-flex align-items-center gap-2 rounded-3 border-0 bg-danger text-white bg-opacity-75"><i class="bi bi-exclamation-circle-fill"></i> <?= htmlspecialchars($loginError) ?></div>
+                        <?php endif; ?>
+
+                        <form method="post">
+                            <input type="hidden" name="form_type" value="login">
+                            <div class="mb-4">
+                                <label class="br-form-label">Email Address</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent border-end-0 border-br2 text-muted"><i class="bi bi-envelope"></i></span>
+                                    <input type="text" name="email" class="br-form-control border-start-0 ps-0" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="name@example.com">
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="br-form-label mb-0">Password</label>
+                                    <button type="button" class="btn btn-link text-warning p-0 text-decoration-none small" data-auth-tab="forgot">Forgot?</button>
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent border-end-0 border-br2 text-muted"><i class="bi bi-lock"></i></span>
+                                    <input type="password" name="password" class="br-form-control border-start-0 ps-0" required placeholder="••••••••">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn br-btn-gold w-100 mb-4 py-2 fs-6">
+                                Sign In <i class="bi bi-arrow-right ms-2"></i>
+                            </button>
+                            <div class="text-center">
+                                <span class="text-muted">Don't have an account?</span>
+                                <button type="button" class="btn btn-link text-warning p-0 text-decoration-none fw-semibold ms-1" data-auth-tab="signup">Create one now</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- FORGOT PASSWORD PANEL -->
+                    <div id="auth-forgot" data-auth-panel="forgot" style="display:<?= $activeTab === 'forgot' ? 'block' : 'none' ?>;">
+                        <div class="mb-4 text-center">
+                            <div class="d-inline-flex align-items-center justify-content-center bg-warning bg-opacity-10 text-warning rounded-circle mb-3" style="width:60px;height:60px;font-size:24px;">
+                                <i class="bi bi-shield-lock"></i>
+                            </div>
+                            <h4 class="fw-bold">Reset Password</h4>
+                            <p class="text-muted small">Verify your identity to set a new password.</p>
                         </div>
 
-                        <div id="auth-login" data-auth-panel="login" style="display:<?= $activeTab === 'login' ? 'block' : 'none' ?>;">
-                            <?php if ($loginError): ?>
-                                <div class="alert alert-danger"><?= htmlspecialchars($loginError) ?></div>
-                            <?php endif; ?>
+                        <?php if ($forgotError): ?>
+                            <div class="alert alert-danger d-flex align-items-center gap-2 rounded-3 border-0 bg-danger text-white bg-opacity-75"><i class="bi bi-exclamation-circle-fill"></i> <?= htmlspecialchars($forgotError) ?></div>
+                        <?php endif; ?>
+                        <?php if ($forgotSuccess): ?>
+                            <div class="alert alert-success d-flex align-items-center gap-2 rounded-3 border-0 bg-success text-white bg-opacity-75"><i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($forgotSuccess) ?></div>
+                        <?php endif; ?>
 
+                        <form method="post" id="forgot-form" data-forgot-verified="<?= $forgotVerified ? '1' : '0' ?>">
+                            <input type="hidden" name="form_type" value="forgot">
+                            <div class="mb-3">
+                                <label class="br-form-label">Email Address</label>
+                                <input type="email" name="email" id="forgot-email" class="br-form-control" required value="<?= htmlspecialchars($forgotEmailValue) ?>">
+                            </div>
+                            <div class="mb-3">
+                                <label class="br-form-label">Security Question</label>
+                                <select name="security_question" id="forgot-question" class="br-form-control" required>
+                                    <option value="">Select your question</option>
+                                    <?php foreach ($securityQuestions as $value => $label): ?>
+                                        <option value="<?= htmlspecialchars($value) ?>" <?= $forgotSecurityQuestion === $value ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="br-form-label">Security Answer</label>
+                                <input type="text" name="security_answer" id="forgot-answer" class="br-form-control" required>
+                            </div>
+                            <button type="button" class="btn br-btn-ghost w-100 mb-2 py-2" id="forgot-verify-btn">
+                                Verify Answer
+                            </button>
+                            <div id="forgot-status" class="small text-muted mb-3 text-center"></div>
+                            
+                            <hr class="text-muted my-4">
 
-
-
-                            <form method="post">
-                                <input type="hidden" name="form_type" value="login">
-
-                                <div class="mb-4">
-                                    <label class="br-form-label">Email Address</label>
-                                    <input type="text" name="email" class="br-form-control" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+                            <div class="row mb-3">
+                                <div class="col-md-6 mb-3 mb-md-0">
+                                    <label class="br-form-label">New Password</label>
+                                    <input type="password" name="new_password" id="forgot-new-password" class="br-form-control" minlength="6" required <?= $forgotVerified ? '' : 'disabled' ?>>
                                 </div>
-
-                                <div class="mb-4">
-                                    <label class="br-form-label">Password</label>
-                                    <input type="password" name="password" class="br-form-control mx-4" required>
+                                <div class="col-md-6">
+                                    <label class="br-form-label">Confirm New</label>
+                                    <input type="password" name="confirm_password" id="forgot-confirm-password" class="br-form-control" minlength="6" required <?= $forgotVerified ? '' : 'disabled' ?>>
                                 </div>
+                            </div>
+                            <button type="submit" class="btn br-btn-gold w-100 mb-3 py-2">Reset Password</button>
+                            <div class="text-center">
+                                <button type="button" class="btn btn-link text-warning p-0 text-decoration-none small" data-auth-tab="login"><i class="bi bi-arrow-left me-1"></i> Back to login</button>
+                            </div>
+                        </form>
+                    </div>
 
-                                <button type="submit" class="btn br-btn-gold w-100 mb-3">
-                                    Log In
-                                </button>
+                    <!-- SIGNUP PANEL -->
+                    <div id="auth-signup" data-auth-panel="signup" style="display:<?= $activeTab === 'signup' ? 'block' : 'none' ?>;">
+                        <?php if ($registerError): ?>
+                            <div class="alert alert-danger d-flex align-items-center gap-2 rounded-3 border-0 bg-danger text-white bg-opacity-75"><i class="bi bi-exclamation-circle-fill"></i> <?= htmlspecialchars($registerError) ?></div>
+                        <?php endif; ?>
 
-                                <div class="text-center">
-                                    <span class="text-muted">No account yet?</span>
-                                    <button type="button" class="btn btn-link text-warning p-0" data-auth-tab="signup">Create one</button>
-                                </div>
-                            </form>
-
-
-
-
-
-                        </div>
-
-                        <div id="auth-signup" data-auth-panel="signup" style="display:<?= $activeTab === 'signup' ? 'block' : 'none' ?>;">
-                            <?php if ($registerError): ?>
-                                <div class="alert alert-danger"><?= htmlspecialchars($registerError) ?></div>
-                            <?php endif; ?>
-                            <form method="post">
-                                <input type="hidden" name="form_type" value="register">
-                                <div class="mb-3">
-                                    <label class="br-form-label">Full Name *</label>
-                                    <input type="text" name="full_name" class="br-form-control" required value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>">
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="br-form-label">Email Address *</label>
-                                    <input type="email" name="email" class="br-form-control" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
-                                </div>
-
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <label class="br-form-label">Password *</label>
-                                        <input type="password" name="password" class="br-form-control" required minlength="6">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="br-form-label">Confirm Password *</label>
-                                        <input type="password" name="confirm_password" class="br-form-control" required minlength="6">
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="br-form-label">Account Type *</label>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        <label class="btn btn-sm <?= $defaultType === 'client' ? 'br-btn-gold' : 'br-btn-ghost' ?>">
-                                            <input type="radio" name="user_type" value="client" class="form-check-input me-1" <?= $defaultType === 'client' ? 'checked' : '' ?>> User
-                                        </label>
-                                        <label class="btn btn-sm <?= $defaultType === 'expert' ? 'br-btn-gold' : 'br-btn-ghost' ?>">
-                                            <input type="radio" name="user_type" value="expert" class="form-check-input me-1" <?= $defaultType === 'expert' ? 'checked' : '' ?>> Expert
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <label class="br-form-label">Phone (Optional)</label>
-                                        <input type="tel" name="phone" class="br-form-control" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="br-form-label">Country (Optional)</label>
-                                        <input type="text" name="country" class="br-form-control" value="<?= htmlspecialchars($_POST['country'] ?? '') ?>">
-                                    </div>
-                                </div>
-
-                                <div id="expert-fields" style="display:<?= $defaultType === 'expert' ? 'block' : 'none' ?>;">
-                                    <div class="br-card p-3 mb-3" style="background:var(--br-card2);">
-                                        <h6 class="fw-semibold mb-3">Expert Details</h6>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="br-form-label">Qualification *</label>
-                                                <input type="text" name="qualification" class="br-form-control" value="<?= htmlspecialchars($_POST['qualification'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="br-form-label">Domain *</label>
-                                                <input type="text" name="domain" class="br-form-control" value="<?= htmlspecialchars($_POST['domain'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-12">
-                                                <label class="br-form-label">Skills (comma separated) *</label>
-                                                <input type="text" name="skills" class="br-form-control" value="<?= htmlspecialchars($_POST['skills'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Experience (Years)</label>
-                                                <input type="number" name="experience_years" class="br-form-control" min="0" value="<?= htmlspecialchars($_POST['experience_years'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Current Role</label>
-                                                <input type="text" name="current_role" class="br-form-control" value="<?= htmlspecialchars($_POST['current_role'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Company</label>
-                                                <input type="text" name="company" class="br-form-control" value="<?= htmlspecialchars($_POST['company'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-12">
-                                                <label class="br-form-label">Headline</label>
-                                                <input type="text" name="headline" class="br-form-control" value="<?= htmlspecialchars($_POST['headline'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Rate Per Session *</label>
-                                                <input type="number" step="0.01" min="0" name="rate_per_session" class="br-form-control" value="<?= htmlspecialchars($_POST['rate_per_session'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Currency</label>
-                                                <input type="text" name="currency" class="br-form-control" value="<?= htmlspecialchars($_POST['currency'] ?? 'USD') ?>">
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="br-form-label">Session Duration (Minutes)</label>
-                                                <input type="number" min="1" name="session_duration_minutes" class="br-form-control" value="<?= htmlspecialchars($_POST['session_duration_minutes'] ?? '10') ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="br-form-label">Max Response Hours</label>
-                                                <input type="number" min="1" name="max_response_hours" class="br-form-control" value="<?= htmlspecialchars($_POST['max_response_hours'] ?? '48') ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="br-form-label">LinkedIn URL</label>
-                                                <input type="url" name="linkedin_url" class="br-form-control" value="<?= htmlspecialchars($_POST['linkedin_url'] ?? '') ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="br-form-label">Portfolio URL</label>
-                                                <input type="url" name="portfolio_url" class="br-form-control" value="<?= htmlspecialchars($_POST['portfolio_url'] ?? '') ?>">
-                                            </div>
+                        <form method="post">
+                            <input type="hidden" name="form_type" value="register">
+                            
+                            <!-- Account Type Switcher -->
+                            <div class="mb-4">
+                                <label class="br-form-label mb-2">I want to join as a...</label>
+                                <div class="d-flex gap-3">
+                                    <label class="position-relative w-50">
+                                        <input type="radio" name="user_type" value="client" class="btn-check" <?= $defaultType === 'client' ? 'checked' : '' ?>>
+                                        <div class="br-card p-3 text-center h-100 transition-all cursor-pointer type-selector border-2">
+                                            <i class="bi bi-person fs-3 text-muted mb-2 d-block"></i>
+                                            <span class="fw-semibold d-block">Client</span>
+                                            <small class="text-muted d-block mt-1" style="font-size:0.7rem">I need answers</small>
                                         </div>
-                                        <div class="text-muted small mt-3">Your expert profile will be reviewed by admin before activation.</div>
+                                    </label>
+                                    <label class="position-relative w-50">
+                                        <input type="radio" name="user_type" value="expert" class="btn-check" <?= $defaultType === 'expert' ? 'checked' : '' ?>>
+                                        <div class="br-card p-3 text-center h-100 transition-all cursor-pointer type-selector border-2">
+                                            <i class="bi bi-briefcase fs-3 text-muted mb-2 d-block"></i>
+                                            <span class="fw-semibold d-block">Expert</span>
+                                            <small class="text-muted d-block mt-1" style="font-size:0.7rem">I provide solutions</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <style>
+                                .btn-check:checked + .type-selector {
+                                    border-color: var(--br-gold) !important;
+                                    background: var(--br-gold-dim) !important;
+                                }
+                                .btn-check:checked + .type-selector i, .btn-check:checked + .type-selector span {
+                                    color: var(--br-gold) !important;
+                                }
+                            </style>
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-sm-6">
+                                    <label class="br-form-label">Full Name *</label>
+                                    <input type="text" name="full_name" class="br-form-control" required value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>" placeholder="John Doe">
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="br-form-label">Email Address *</label>
+                                    <input type="email" name="email" class="br-form-control" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" placeholder="name@example.com">
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="br-form-label">Password *</label>
+                                    <input type="password" name="password" class="br-form-control" required minlength="6" placeholder="Min 6 chars">
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="br-form-label">Confirm Password *</label>
+                                    <input type="password" name="confirm_password" class="br-form-control" required minlength="6">
+                                </div>
+                            </div>
+
+                            <hr class="text-muted my-4">
+                            <h6 class="fw-semibold mb-3 fs-6">Account Security</h6>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-12">
+                                    <label class="br-form-label">Security Question *</label>
+                                    <select name="security_question" class="br-form-control" required>
+                                        <option value="">Select a question for account recovery</option>
+                                        <?php foreach ($securityQuestions as $value => $label): ?>
+                                            <option value="<?= htmlspecialchars($value) ?>" <?= $registerSecurityQuestion === $value ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="br-form-label">Security Answer *</label>
+                                    <input type="text" name="security_answer" class="br-form-control" required value="<?= htmlspecialchars($formType === 'register' ? ($_POST['security_answer'] ?? '') : '') ?>">
+                                </div>
+                            </div>
+
+                            <!-- Expert Fields (Dynamically Shown) -->
+                            <div id="expert-fields" style="display:<?= $defaultType === 'expert' ? 'block' : 'none' ?>;" class="bg-light p-4 rounded-3 border mb-4">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center" style="width:30px;height:30px;"><i class="bi bi-star-fill small"></i></div>
+                                    <h6 class="fw-semibold mb-0">Expert Profile Setup</h6>
+                                </div>
+                                <p class="small text-muted mb-4">Tell us about your expertise. Admins will review your profile before activating your account.</p>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="br-form-label">Primary Domain *</label>
+                                        <input type="text" name="domain" class="br-form-control" value="<?= htmlspecialchars($_POST['domain'] ?? '') ?>" placeholder="e.g. Software Eng.">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="br-form-label">Highest Qual. *</label>
+                                        <input type="text" name="qualification" class="br-form-control" value="<?= htmlspecialchars($_POST['qualification'] ?? '') ?>" placeholder="e.g. MS CompSci">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="br-form-label">Skills (comma separated) *</label>
+                                        <input type="text" name="skills" class="br-form-control" value="<?= htmlspecialchars($_POST['skills'] ?? '') ?>" placeholder="e.g. React, Node, PHP">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="br-form-label">Rate Per Session (USD) *</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-transparent border-end-0 border-br2 text-muted">$</span>
+                                            <input type="number" step="0.01" min="0" name="rate_per_session" class="br-form-control border-start-0 ps-0" value="<?= htmlspecialchars($_POST['rate_per_session'] ?? '') ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="br-form-label">Exp (Years)</label>
+                                        <input type="number" name="experience_years" class="br-form-control" min="0" value="<?= htmlspecialchars($_POST['experience_years'] ?? '') ?>">
                                     </div>
                                 </div>
+                            </div>
 
-                                <button type="submit" class="btn br-btn-gold w-100 mb-3">
-                                    Create Account
-                                </button>
-                                <div class="text-center">
-                                    <span class="text-muted">Already have an account?</span>
-                                    <button type="button" class="btn btn-link text-warning p-0" data-auth-tab="login">Log in</button>
-                                </div>
-                            </form>
-                        </div>
+                            <button type="submit" class="btn br-btn-gold w-100 py-2 fs-6 mb-3">Create Account</button>
+                            <p class="text-center small text-muted">
+                                By signing up, you agree to our Terms of Service and Privacy Policy.
+                            </p>
+                        </form>
                     </div>
-
                 </div>
             </div>
         </div>
@@ -347,6 +508,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script>
         const tabButtons = document.querySelectorAll('[data-auth-tab]');
+        const pillButtons = document.querySelectorAll('[data-auth-tab-style="pill"]');
         const panels = document.querySelectorAll('[data-auth-panel]');
         const expertFields = document.getElementById('expert-fields');
 
@@ -354,7 +516,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             panels.forEach(panel => {
                 panel.style.display = panel.dataset.authPanel === tab ? 'block' : 'none';
             });
-            tabButtons.forEach(btn => {
+            pillButtons.forEach(btn => {
                 const isActive = btn.dataset.authTab === tab;
                 btn.classList.toggle('br-btn-gold', isActive);
                 btn.classList.toggle('br-btn-ghost', !isActive);
@@ -382,6 +544,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         typeInputs.forEach(input => input.addEventListener('change', updateAccountType));
         updateAccountType();
+
+        const forgotForm = document.getElementById('forgot-form');
+        if (forgotForm) {
+            const emailInput = document.getElementById('forgot-email');
+            const questionSelect = document.getElementById('forgot-question');
+            const answerInput = document.getElementById('forgot-answer');
+            const verifyBtn = document.getElementById('forgot-verify-btn');
+            const statusEl = document.getElementById('forgot-status');
+            const newPasswordInput = document.getElementById('forgot-new-password');
+            const confirmPasswordInput = document.getElementById('forgot-confirm-password');
+            const verifyUrl = "<?= APP_URL ?>/api/verify_security_answer.php";
+
+            const setResetEnabled = (enabled) => {
+                if (newPasswordInput) newPasswordInput.disabled = !enabled;
+                if (confirmPasswordInput) confirmPasswordInput.disabled = !enabled;
+            };
+
+            const setStatus = (msg, isError = false) => {
+                if (!statusEl) return;
+                statusEl.textContent = msg;
+                statusEl.classList.toggle('text-danger', isError);
+                statusEl.classList.toggle('text-success', !isError && msg !== '');
+                statusEl.classList.toggle('text-muted', msg === '');
+            };
+
+            setResetEnabled(forgotForm.dataset.forgotVerified === '1');
+
+            [emailInput, questionSelect, answerInput].forEach(el => {
+                if (!el) return;
+                el.addEventListener('input', () => {
+                    setResetEnabled(false);
+                    setStatus('');
+                });
+            });
+
+            if (verifyBtn) {
+                verifyBtn.addEventListener('click', async () => {
+                    const email = emailInput ? emailInput.value.trim() : '';
+                    const question = questionSelect ? questionSelect.value.trim() : '';
+                    const answer = answerInput ? answerInput.value.trim() : '';
+
+                    if (!email || !question || !answer) {
+                        setStatus('Please fill email, question, and answer first.', true);
+                        setResetEnabled(false);
+                        return;
+                    }
+
+                    verifyBtn.disabled = true;
+                    setStatus('Verifying answer...');
+
+                    try {
+                        const body = new URLSearchParams({
+                            email,
+                            security_question: question,
+                            security_answer: answer,
+                        });
+                        const res = await fetch(verifyUrl, {
+                            method: 'POST',
+                            body
+                        });
+                        const data = await res.json();
+
+                        if (data && data.success) {
+                            setResetEnabled(true);
+                            setStatus('Answer verified. Set a new password.');
+                            if (newPasswordInput) newPasswordInput.focus();
+                        } else {
+                            setResetEnabled(false);
+                            setStatus(data.error || 'Verification failed.', true);
+                        }
+                    } catch (err) {
+                        setResetEnabled(false);
+                        setStatus('Unable to verify right now. Try again.', true);
+                    } finally {
+                        verifyBtn.disabled = false;
+                    }
+                });
+            }
+        }
     </script>
 </body>
 

@@ -4,6 +4,7 @@ $title = 'Upload E-Book';
 require_once __DIR__ . '/../config/auth.php';
 requireLogin();
 require_once __DIR__ . '/../includes/upload_media_helpers.php';
+require_once __DIR__ . '/../includes/media_blob_helpers.php';
 
 $db = Database::getInstance();
 $user = currentUser();
@@ -16,53 +17,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (empty($_POST) && empty($_FILES) && $contentLength > 0) {
     $error = 'Upload failed. The request is too large for the server. Increase post_max_size and upload_max_filesize in php.ini.';
   } else {
-<<<<<<< Updated upstream
-    $file = $_FILES['ebook'];
-    $allowedExts = ['pdf', 'epub', 'mobi'];
-=======
     $bookTitle = trim($_POST['title'] ?? '');
     $author = trim($_POST['author'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $description = trim($_POST['description'] ?? '');
->>>>>>> Stashed changes
 
     if (empty($bookTitle)) {
       $error = 'Book title is required';
     } elseif (!isset($_FILES['ebook'])) {
       $error = 'Please upload an e-book file';
     } else {
-<<<<<<< Updated upstream
-      $uploadRoot = __DIR__ . '/../uploads';
-      $ebooksDir = $uploadRoot . '/ebooks';
-      $thumbDir = $uploadRoot . '/thumbnails';
-
-      if (
-        (!is_dir($ebooksDir) && !mkdir($ebooksDir, 0755, true) && !is_dir($ebooksDir)) ||
-        (!is_dir($thumbDir) && !mkdir($thumbDir, 0755, true) && !is_dir($thumbDir))
-      ) {
-        $error = 'Upload directory is not writable. Please contact admin.';
-      }
-
-      if ($error === '') {
-        // Create unique filename
-        $filename = uniqid() . '_' . time() . '.' . $ext;
-        $uploadPath = $ebooksDir . '/' . $filename;
-
-        if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
-          $coverImage = brAutoCaptureThumbnail($uploadPath, $ext, $thumbDir);
-
-          // Optional manual cover override
-          if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
-            $coverFile = $_FILES['cover'];
-            $coverExt = strtolower(pathinfo($coverFile['name'], PATHINFO_EXTENSION));
-            if (in_array($coverExt, ['jpg', 'jpeg', 'png', 'webp'])) {
-              $coverFilename = uniqid() . '_cover.' . $coverExt;
-              $coverPath = $thumbDir . '/' . $coverFilename;
-              if (move_uploaded_file($coverFile['tmp_name'], $coverPath)) {
-                $coverImage = APP_URL . '/uploads/thumbnails/' . $coverFilename;
-=======
       $file = $_FILES['ebook'];
-      $allowedTypes = ['application/pdf', 'application/epub+zip', 'application/x-mobipocket-ebook'];
       $allowedExts = ['pdf', 'epub', 'mobi'];
 
       if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -86,56 +51,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($file['size'] > 50 * 1024 * 1024) { // 50MB limit
           $error = 'File too large. Maximum size is 50MB.';
         } else {
-          // Create unique filename
-          $filename = uniqid() . '_' . time() . '.' . $ext;
-          $uploadPath = __DIR__ . '/../uploads/ebooks/' . $filename;
+          $uploadRoot = __DIR__ . '/../uploads';
+          $ebooksDir = $uploadRoot . '/ebooks';
+          $thumbDir = $uploadRoot . '/thumbnails';
 
-          if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
-            // Handle cover image if uploaded
-            $coverImage = null;
-            if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
-              $coverFile = $_FILES['cover'];
-              $coverExt = strtolower(pathinfo($coverFile['name'], PATHINFO_EXTENSION));
-              if (in_array($coverExt, ['jpg', 'jpeg', 'png', 'webp'])) {
-                $coverFilename = uniqid() . '_cover.' . $coverExt;
-                $coverPath = __DIR__ . '/../uploads/thumbnails/' . $coverFilename;
-                if (move_uploaded_file($coverFile['tmp_name'], $coverPath)) {
-                  $coverImage = APP_URL . '/uploads/thumbnails/' . $coverFilename;
+          if (!brEnsureDirectory($ebooksDir) || !brEnsureDirectory($thumbDir)) {
+            $error = 'Upload directory is not writable. Please contact admin.';
+          } else {
+            $filename = uniqid() . '_' . time() . '.' . $ext;
+            $uploadPath = $ebooksDir . '/' . $filename;
+
+            if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
+              $coverImage = brAutoCaptureThumbnail($uploadPath, $ext, $thumbDir);
+
+              if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
+                $coverFile = $_FILES['cover'];
+                $coverExt = strtolower(pathinfo($coverFile['name'], PATHINFO_EXTENSION));
+                if (in_array($coverExt, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                  $coverFilename = uniqid() . '_cover.' . $coverExt;
+                  $coverPath = $thumbDir . '/' . $coverFilename;
+                  if (move_uploaded_file($coverFile['tmp_name'], $coverPath)) {
+                    $coverImage = APP_URL . '/uploads/thumbnails/' . $coverFilename;
+                  }
                 }
->>>>>>> Stashed changes
+              }
+
+              $filePath = APP_URL . '/uploads/ebooks/' . $filename;
+              $fileSize = (int) $file['size'];
+
+              $conn = $db->getConnection();
+
+              try {
+                $conn->beginTransaction();
+
+                $stmt = $conn->prepare(
+                  "INSERT INTO libraries (title, author, category, description, file_path, file_size, file_type, cover_image, uploaded_by, is_active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+                );
+                $stmt->execute([$bookTitle, $author, $category, $description, $filePath, $fileSize, $ext, $coverImage, $user['id']]);
+
+                $bookId = (int) $conn->lastInsertId();
+                if ($bookId <= 0) {
+                  throw new RuntimeException('Could not create library record.');
+                }
+
+                $blobSaved = brSaveEntityFileBlob(
+                  $db,
+                  'libraries',
+                  $bookId,
+                  $uploadPath,
+                  (string) ($file['name'] ?? $filename),
+                  $filename,
+                  $ext,
+                  null,
+                  $fileSize,
+                  'hybrid',
+                  $filePath
+                );
+
+                if (!$blobSaved) {
+                  throw new RuntimeException('Could not save file in uploaded_files.');
+                }
+
+                $conn->commit();
+
+                $success = 'E-book uploaded successfully!';
+                header('Location: ' . APP_URL . '/pages/libraries.php');
+                exit;
+              } catch (Throwable $e) {
+                if ($conn->inTransaction()) {
+                  $conn->rollBack();
+                }
+                error_log('E-book upload failed: ' . $e->getMessage());
+
+                if (is_file($uploadPath)) {
+                  @unlink($uploadPath);
+                }
+                if (!empty($coverImage)) {
+                  $coverLocal = resolveUploadedFilePath($coverImage);
+                  if (is_file($coverLocal)) {
+                    @unlink($coverLocal);
+                  }
+                }
+
+                $error = 'Could not save the e-book. Please run database/setup_database.php and try again.';
               }
             }
 
-            $filePath = APP_URL . '/uploads/ebooks/' . $filename;
-            $fileSize = $file['size'];
-
-            $db->execute(
-              "INSERT INTO libraries (title, author, category, description, file_path, file_size, file_type, cover_image, uploaded_by)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [$bookTitle, $author, $category, $description, $filePath, $fileSize, $ext, $coverImage, $user['id']]
-            );
-
-            $success = 'E-book uploaded successfully!';
-            header('Location: ' . APP_URL . '/pages/libraries.php');
-            exit;
-          } else {
-            $error = 'Failed to upload file. Please try again.';
+            $error = 'Failed to upload file. Please check folder permissions and try again.';
           }
-
-          $filePath = APP_URL . '/uploads/ebooks/' . $filename;
-          $fileSize = $file['size'];
-
-          $db->execute(
-            "INSERT INTO libraries (title, author, category, description, file_path, file_size, file_type, cover_image, uploaded_by)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [$bookTitle, $author, $category, $description, $filePath, $fileSize, $ext, $coverImage, $user['id']]
-          );
-
-          $success = 'E-book uploaded successfully!';
-          header('Location: ' . APP_URL . '/pages/libraries.php');
-          exit;
-        } else {
-          $error = 'Failed to upload file. Please check folder permissions and try again.';
         }
       }
     }

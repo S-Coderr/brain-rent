@@ -14,6 +14,8 @@ CREATE TABLE users (
     full_name       VARCHAR(100)   NOT NULL,
     email           VARCHAR(150)   NOT NULL UNIQUE,
     password_hash   VARCHAR(255)   NOT NULL,
+    security_question VARCHAR(255),
+    security_answer_hash VARCHAR(255),
     phone           VARCHAR(20),
     user_type       ENUM('client','expert','both','admin') NOT NULL DEFAULT 'client',
     profile_photo   VARCHAR(500),
@@ -112,7 +114,8 @@ CREATE TABLE expert_categories (
 CREATE TABLE thinking_requests (
     id                      INT AUTO_INCREMENT PRIMARY KEY,
     client_id               INT             NOT NULL,
-    expert_id               INT             NOT NULL,
+    expert_id               INT             NULL,
+    is_global               TINYINT(1)      DEFAULT 0,
     title                   VARCHAR(255)    NOT NULL,
     problem_text            TEXT,
     problem_voice_path      VARCHAR(500),
@@ -133,7 +136,7 @@ CREATE TABLE thinking_requests (
     created_at              TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_tr_client   FOREIGN KEY (client_id)   REFERENCES users(id),
-    CONSTRAINT fk_tr_expert   FOREIGN KEY (expert_id)   REFERENCES users(id),
+    CONSTRAINT fk_tr_expert   FOREIGN KEY (expert_id)   REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_tr_category FOREIGN KEY (category_id) REFERENCES expertise_categories(id),
     INDEX idx_tr_client  (client_id),
     INDEX idx_tr_expert  (expert_id),
@@ -211,7 +214,7 @@ CREATE TABLE payments (
     id                  INT AUTO_INCREMENT PRIMARY KEY,
     request_id          INT             NOT NULL,
     payer_id            INT             NOT NULL,
-    payee_id            INT             NOT NULL,
+    payee_id            INT             NULL,
     amount              DECIMAL(10,2)   NOT NULL,
     platform_fee        DECIMAL(10,2),
     expert_payout       DECIMAL(10,2),
@@ -227,7 +230,7 @@ CREATE TABLE payments (
 
     CONSTRAINT fk_pay_request FOREIGN KEY (request_id) REFERENCES thinking_requests(id),
     CONSTRAINT fk_pay_payer   FOREIGN KEY (payer_id)   REFERENCES users(id),
-    CONSTRAINT fk_pay_payee   FOREIGN KEY (payee_id)   REFERENCES users(id),
+    CONSTRAINT fk_pay_payee   FOREIGN KEY (payee_id)   REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_payments_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
